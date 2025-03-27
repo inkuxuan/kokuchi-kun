@@ -1,0 +1,459 @@
+2025-03-27 12:35:24,611 - discord.client - WARNING - PyNaCl is not installed, voice will NOT be supported
+2025-03-27 12:35:24,612 - __main__ - INFO - Starting bot...
+2025-03-27 12:35:24,612 - discord.client - INFO - logging in using static token
+2025-03-27 12:35:25,044 - utils.vrchat_api - INFO - Attempting cookie authentication
+2025-03-27 12:35:25,302 - utils.vrchat_api - INFO - Successfully authenticated with saved cookie as いんく「さよなら夏」
+2025-03-27 12:35:25,302 - __main__ - INFO - Authenticated with VRChat as いんく「さよなら夏」
+2025-03-27 12:35:25,355 - apscheduler.scheduler - INFO - Scheduler started
+2025-03-27 12:35:25,355 - __main__ - INFO - Bot setup complete
+2025-03-27 12:35:25,623 - discord.gateway - INFO - Shard ID None has connected to Gateway (Session ID: 97c052c48ab7f1e05e0db69746001915).
+2025-03-27 12:35:27,634 - __main__ - INFO - Logged in as AnnouncementManager (1306499718313938974)
+2025-03-27 12:35:27,634 - __main__ - INFO - Monitoring channel ID: 1354741091869524100
+2025-03-27 12:37:37,967 - apscheduler.scheduler - INFO - Scheduler has been shut down
+2025-03-27 12:37:54,042 - discord.client - WARNING - PyNaCl is not installed, voice will NOT be supported
+2025-03-27 12:37:54,043 - __main__ - INFO - Starting bot...
+2025-03-27 12:37:54,043 - discord.client - INFO - logging in using static token
+2025-03-27 12:37:54,641 - utils.vrchat_api - INFO - Attempting cookie authentication
+2025-03-27 12:37:54,939 - utils.vrchat_api - INFO - Successfully authenticated with saved cookie as いんく「さよなら夏」
+2025-03-27 12:37:54,939 - __main__ - INFO - Authenticated with VRChat as いんく「さよなら夏」
+2025-03-27 12:37:54,942 - apscheduler.scheduler - INFO - Scheduler started
+2025-03-27 12:37:54,942 - __main__ - INFO - Bot setup complete
+2025-03-27 12:37:55,229 - discord.gateway - INFO - Shard ID None has connected to Gateway (Session ID: 95d1eaca574fb46e6154dacfb0fee2ea).
+2025-03-27 12:37:57,240 - __main__ - INFO - Logged in as AnnouncementManager (1306499718313938974)
+2025-03-27 12:37:57,240 - __main__ - INFO - Monitoring channel ID: 1354741091869524100
+2025-03-27 12:38:03,905 - cogs.announcement - INFO - Received announcement request from sayonara_natsu
+2025-03-27 12:39:11,530 - cogs.announcement - INFO - Received announcement request from sayonara_natsu
+2025-03-27 12:39:11,531 - discord.ext.commands.bot - ERROR - Ignoring exception in command None
+discord.ext.commands.errors.CommandNotFound: Command "list" is not found
+2025-03-27 12:43:48,564 - apscheduler.scheduler - INFO - Scheduler has been shut down
+2025-03-27 12:44:39,116 - discord.client - WARNING - PyNaCl is not installed, voice will NOT be supported
+2025-03-27 12:44:39,119 - __main__ - INFO - Starting bot...
+2025-03-27 12:44:39,119 - discord.client - INFO - logging in using static token
+2025-03-27 12:44:39,511 - utils.vrchat_api - INFO - Attempting cookie authentication
+2025-03-27 12:44:39,879 - utils.vrchat_api - INFO - Successfully authenticated with saved cookie as いんく「さよなら夏」
+2025-03-27 12:44:39,880 - __main__ - INFO - Authenticated with VRChat as いんく「さよなら夏」
+2025-03-27 12:44:39,886 - apscheduler.scheduler - INFO - Scheduler started
+2025-03-27 12:44:39,887 - __main__ - INFO - Bot setup complete
+2025-03-27 12:44:40,259 - discord.gateway - INFO - Shard ID None has connected to Gateway (Session ID: a8ee94f8b9f4218de5cc10d125374a19).
+2025-03-27 12:44:42,270 - __main__ - INFO - Logged in as AnnouncementManager (1306499718313938974)
+2025-03-27 12:44:42,271 - __main__ - INFO - Monitoring channel ID: 1354741091869524100
+2025-03-27 12:44:48,067 - cogs.announcement - INFO - Received announcement request from sayonara_natsu
+2025-03-27 12:46:20,851 - discord.gateway - WARNING - Shard ID None heartbeat blocked for more than 10 seconds.
+Loop thread traceback (most recent call last):
+  File "/usr/lib/python3.8/runpy.py", line 194, in _run_module_as_main
+    return _run_code(code, main_globals, None,
+  File "/usr/lib/python3.8/runpy.py", line 87, in _run_code
+    exec(code, run_globals)
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/adapter/../../debugpy/launcher/../../debugpy/__main__.py", line 39, in <module>
+    cli.main()
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/adapter/../../debugpy/launcher/../../debugpy/../debugpy/server/cli.py", line 430, in main
+    run()
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/adapter/../../debugpy/launcher/../../debugpy/../debugpy/server/cli.py", line 284, in run_file
+    runpy.run_path(target, run_name="__main__")
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/_vendored/pydevd/_pydevd_bundle/pydevd_runpy.py", line 321, in run_path
+    return _run_module_code(code, init_globals, run_name,
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/_vendored/pydevd/_pydevd_bundle/pydevd_runpy.py", line 135, in _run_module_code
+    _run_code(code, mod_globals, init_globals,
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/_vendored/pydevd/_pydevd_bundle/pydevd_runpy.py", line 124, in _run_code
+    exec(code, run_globals)
+  File "/home/inkuxuan/vspc-bot/bot.py", line 95, in <module>
+    asyncio.run(main())
+  File "/usr/lib/python3.8/asyncio/runners.py", line 44, in run
+    return loop.run_until_complete(main)
+  File "/usr/lib/python3.8/asyncio/base_events.py", line 603, in run_until_complete
+    self.run_forever()
+  File "/usr/lib/python3.8/asyncio/base_events.py", line 570, in run_forever
+    self._run_once()
+  File "/usr/lib/python3.8/asyncio/base_events.py", line 1859, in _run_once
+    handle._run()
+  File "/usr/lib/python3.8/asyncio/events.py", line 81, in _run
+    self._context.run(self._callback, *self._args)
+  File "/home/inkuxuan/vspc-bot/.venv/lib/python3.8/site-packages/discord/client.py", line 481, in _run_event
+    await coro(*args, **kwargs)
+  File "/home/inkuxuan/vspc-bot/cogs/announcement.py", line 48, in on_raw_reaction_add
+    if not channel:
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/_vendored/pydevd/_pydevd_bundle/pydevd_frame.py", line 1197, in trace_dispatch
+    self.do_wait_suspend(thread, frame, event, arg)
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/_vendored/pydevd/_pydevd_bundle/pydevd_frame.py", line 165, in do_wait_suspend
+    self._args[0].do_wait_suspend(*args, **kwargs)
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/_vendored/pydevd/pydevd.py", line 2070, in do_wait_suspend
+    keep_suspended = self._do_wait_suspend(thread, frame, event, arg, suspend_type, from_this_thread, frames_tracker)
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/_vendored/pydevd/pydevd.py", line 2106, in _do_wait_suspend
+    time.sleep(0.01)
+
+2025-03-27 12:46:30,853 - discord.gateway - WARNING - Shard ID None heartbeat blocked for more than 20 seconds.
+Loop thread traceback (most recent call last):
+  File "/usr/lib/python3.8/runpy.py", line 194, in _run_module_as_main
+    return _run_code(code, main_globals, None,
+  File "/usr/lib/python3.8/runpy.py", line 87, in _run_code
+    exec(code, run_globals)
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/adapter/../../debugpy/launcher/../../debugpy/__main__.py", line 39, in <module>
+    cli.main()
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/adapter/../../debugpy/launcher/../../debugpy/../debugpy/server/cli.py", line 430, in main
+    run()
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/adapter/../../debugpy/launcher/../../debugpy/../debugpy/server/cli.py", line 284, in run_file
+    runpy.run_path(target, run_name="__main__")
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/_vendored/pydevd/_pydevd_bundle/pydevd_runpy.py", line 321, in run_path
+    return _run_module_code(code, init_globals, run_name,
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/_vendored/pydevd/_pydevd_bundle/pydevd_runpy.py", line 135, in _run_module_code
+    _run_code(code, mod_globals, init_globals,
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/_vendored/pydevd/_pydevd_bundle/pydevd_runpy.py", line 124, in _run_code
+    exec(code, run_globals)
+  File "/home/inkuxuan/vspc-bot/bot.py", line 95, in <module>
+    asyncio.run(main())
+  File "/usr/lib/python3.8/asyncio/runners.py", line 44, in run
+    return loop.run_until_complete(main)
+  File "/usr/lib/python3.8/asyncio/base_events.py", line 603, in run_until_complete
+    self.run_forever()
+  File "/usr/lib/python3.8/asyncio/base_events.py", line 570, in run_forever
+    self._run_once()
+  File "/usr/lib/python3.8/asyncio/base_events.py", line 1859, in _run_once
+    handle._run()
+  File "/usr/lib/python3.8/asyncio/events.py", line 81, in _run
+    self._context.run(self._callback, *self._args)
+  File "/home/inkuxuan/vspc-bot/.venv/lib/python3.8/site-packages/discord/client.py", line 481, in _run_event
+    await coro(*args, **kwargs)
+  File "/home/inkuxuan/vspc-bot/cogs/announcement.py", line 51, in on_raw_reaction_add
+    message = await channel.fetch_message(payload.message_id)
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/_vendored/pydevd/_pydevd_bundle/pydevd_frame.py", line 1197, in trace_dispatch
+    self.do_wait_suspend(thread, frame, event, arg)
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/_vendored/pydevd/_pydevd_bundle/pydevd_frame.py", line 165, in do_wait_suspend
+    self._args[0].do_wait_suspend(*args, **kwargs)
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/_vendored/pydevd/pydevd.py", line 2070, in do_wait_suspend
+    keep_suspended = self._do_wait_suspend(thread, frame, event, arg, suspend_type, from_this_thread, frames_tracker)
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/_vendored/pydevd/pydevd.py", line 2106, in _do_wait_suspend
+    time.sleep(0.01)
+
+2025-03-27 12:46:58,483 - discord.gateway - WARNING - Can't keep up, shard ID None websocket is 24.8s behind.
+2025-03-27 12:46:58,483 - discord.gateway - INFO - Shard ID None has successfully RESUMED session a8ee94f8b9f4218de5cc10d125374a19.
+2025-03-27 12:47:24,603 - utils.ai_processor - INFO - Processing announcement with AI
+2025-03-27 12:47:25,066 - httpx - INFO - HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+2025-03-27 12:47:27,813 - utils.ai_processor - INFO - Raw AI response: ```json
+{
+  "date": "2025-03-27",
+  "time": "23:00",
+  "title": "テストイベント開催のお知らせ",
+  "content": "テスト告知です。"
+}
+```
+2025-03-27 12:47:27,813 - utils.ai_processor - INFO - Parsed response: {'date': '2025-03-27', 'time': '23:00', 'title': 'テストイベント開催のお知らせ', 'content': 'テスト告知です。'}
+2025-03-27 12:47:53,951 - utils.scheduler - INFO - Scheduling announcement for 2025-03-27 14:00:00+00:00 with job ID 36201eb4-0511-4640-b11e-38ee91cd2018
+2025-03-27 12:48:16,030 - discord.gateway - WARNING - Shard ID None heartbeat blocked for more than 10 seconds.
+Loop thread traceback (most recent call last):
+  File "/usr/lib/python3.8/runpy.py", line 194, in _run_module_as_main
+    return _run_code(code, main_globals, None,
+  File "/usr/lib/python3.8/runpy.py", line 87, in _run_code
+    exec(code, run_globals)
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/adapter/../../debugpy/launcher/../../debugpy/__main__.py", line 39, in <module>
+    cli.main()
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/adapter/../../debugpy/launcher/../../debugpy/../debugpy/server/cli.py", line 430, in main
+    run()
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/adapter/../../debugpy/launcher/../../debugpy/../debugpy/server/cli.py", line 284, in run_file
+    runpy.run_path(target, run_name="__main__")
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/_vendored/pydevd/_pydevd_bundle/pydevd_runpy.py", line 321, in run_path
+    return _run_module_code(code, init_globals, run_name,
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/_vendored/pydevd/_pydevd_bundle/pydevd_runpy.py", line 135, in _run_module_code
+    _run_code(code, mod_globals, init_globals,
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/_vendored/pydevd/_pydevd_bundle/pydevd_runpy.py", line 124, in _run_code
+    exec(code, run_globals)
+  File "/home/inkuxuan/vspc-bot/bot.py", line 95, in <module>
+    asyncio.run(main())
+  File "/usr/lib/python3.8/asyncio/runners.py", line 44, in run
+    return loop.run_until_complete(main)
+  File "/usr/lib/python3.8/asyncio/base_events.py", line 603, in run_until_complete
+    self.run_forever()
+  File "/usr/lib/python3.8/asyncio/base_events.py", line 570, in run_forever
+    self._run_once()
+  File "/usr/lib/python3.8/asyncio/base_events.py", line 1859, in _run_once
+    handle._run()
+  File "/usr/lib/python3.8/asyncio/events.py", line 81, in _run
+    self._context.run(self._callback, *self._args)
+  File "/home/inkuxuan/vspc-bot/.venv/lib/python3.8/site-packages/discord/client.py", line 481, in _run_event
+    await coro(*args, **kwargs)
+  File "/home/inkuxuan/vspc-bot/cogs/announcement.py", line 65, in on_raw_reaction_add
+    await self._process_approved_announcement(message)
+  File "/home/inkuxuan/vspc-bot/cogs/announcement.py", line 105, in _process_approved_announcement
+    job_id = await self.scheduler.schedule_announcement(
+  File "/home/inkuxuan/vspc-bot/utils/scheduler.py", line 28, in schedule_announcement
+    self.scheduler.add_job(
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/_vendored/pydevd/_pydevd_bundle/pydevd_frame.py", line 1197, in trace_dispatch
+    self.do_wait_suspend(thread, frame, event, arg)
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/_vendored/pydevd/_pydevd_bundle/pydevd_frame.py", line 165, in do_wait_suspend
+    self._args[0].do_wait_suspend(*args, **kwargs)
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/_vendored/pydevd/pydevd.py", line 2070, in do_wait_suspend
+    keep_suspended = self._do_wait_suspend(thread, frame, event, arg, suspend_type, from_this_thread, frames_tracker)
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/_vendored/pydevd/pydevd.py", line 2106, in _do_wait_suspend
+    time.sleep(0.01)
+
+2025-03-27 12:48:26,032 - discord.gateway - WARNING - Shard ID None heartbeat blocked for more than 20 seconds.
+Loop thread traceback (most recent call last):
+  File "/usr/lib/python3.8/runpy.py", line 194, in _run_module_as_main
+    return _run_code(code, main_globals, None,
+  File "/usr/lib/python3.8/runpy.py", line 87, in _run_code
+    exec(code, run_globals)
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/adapter/../../debugpy/launcher/../../debugpy/__main__.py", line 39, in <module>
+    cli.main()
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/adapter/../../debugpy/launcher/../../debugpy/../debugpy/server/cli.py", line 430, in main
+    run()
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/adapter/../../debugpy/launcher/../../debugpy/../debugpy/server/cli.py", line 284, in run_file
+    runpy.run_path(target, run_name="__main__")
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/_vendored/pydevd/_pydevd_bundle/pydevd_runpy.py", line 321, in run_path
+    return _run_module_code(code, init_globals, run_name,
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/_vendored/pydevd/_pydevd_bundle/pydevd_runpy.py", line 135, in _run_module_code
+    _run_code(code, mod_globals, init_globals,
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/_vendored/pydevd/_pydevd_bundle/pydevd_runpy.py", line 124, in _run_code
+    exec(code, run_globals)
+  File "/home/inkuxuan/vspc-bot/bot.py", line 95, in <module>
+    asyncio.run(main())
+  File "/usr/lib/python3.8/asyncio/runners.py", line 44, in run
+    return loop.run_until_complete(main)
+  File "/usr/lib/python3.8/asyncio/base_events.py", line 603, in run_until_complete
+    self.run_forever()
+  File "/usr/lib/python3.8/asyncio/base_events.py", line 570, in run_forever
+    self._run_once()
+  File "/usr/lib/python3.8/asyncio/base_events.py", line 1859, in _run_once
+    handle._run()
+  File "/usr/lib/python3.8/asyncio/events.py", line 81, in _run
+    self._context.run(self._callback, *self._args)
+  File "/home/inkuxuan/vspc-bot/.venv/lib/python3.8/site-packages/discord/client.py", line 481, in _run_event
+    await coro(*args, **kwargs)
+  File "/home/inkuxuan/vspc-bot/cogs/announcement.py", line 65, in on_raw_reaction_add
+    await self._process_approved_announcement(message)
+  File "/home/inkuxuan/vspc-bot/cogs/announcement.py", line 105, in _process_approved_announcement
+    job_id = await self.scheduler.schedule_announcement(
+  File "/home/inkuxuan/vspc-bot/utils/scheduler.py", line 28, in schedule_announcement
+    self.scheduler.add_job(
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/_vendored/pydevd/_pydevd_bundle/pydevd_frame.py", line 1197, in trace_dispatch
+    self.do_wait_suspend(thread, frame, event, arg)
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/_vendored/pydevd/_pydevd_bundle/pydevd_frame.py", line 165, in do_wait_suspend
+    self._args[0].do_wait_suspend(*args, **kwargs)
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/_vendored/pydevd/pydevd.py", line 2070, in do_wait_suspend
+    keep_suspended = self._do_wait_suspend(thread, frame, event, arg, suspend_type, from_this_thread, frames_tracker)
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/_vendored/pydevd/pydevd.py", line 2106, in _do_wait_suspend
+    time.sleep(0.01)
+
+2025-03-27 12:48:33,619 - apscheduler.scheduler - INFO - Added job "Scheduler._post_announcement" to job store "default"
+2025-03-27 12:48:36,034 - discord.gateway - WARNING - Shard ID None heartbeat blocked for more than 30 seconds.
+Loop thread traceback (most recent call last):
+  File "/usr/lib/python3.8/runpy.py", line 194, in _run_module_as_main
+    return _run_code(code, main_globals, None,
+  File "/usr/lib/python3.8/runpy.py", line 87, in _run_code
+    exec(code, run_globals)
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/adapter/../../debugpy/launcher/../../debugpy/__main__.py", line 39, in <module>
+    cli.main()
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/adapter/../../debugpy/launcher/../../debugpy/../debugpy/server/cli.py", line 430, in main
+    run()
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/adapter/../../debugpy/launcher/../../debugpy/../debugpy/server/cli.py", line 284, in run_file
+    runpy.run_path(target, run_name="__main__")
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/_vendored/pydevd/_pydevd_bundle/pydevd_runpy.py", line 321, in run_path
+    return _run_module_code(code, init_globals, run_name,
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/_vendored/pydevd/_pydevd_bundle/pydevd_runpy.py", line 135, in _run_module_code
+    _run_code(code, mod_globals, init_globals,
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/_vendored/pydevd/_pydevd_bundle/pydevd_runpy.py", line 124, in _run_code
+    exec(code, run_globals)
+  File "/home/inkuxuan/vspc-bot/bot.py", line 95, in <module>
+    asyncio.run(main())
+  File "/usr/lib/python3.8/asyncio/runners.py", line 44, in run
+    return loop.run_until_complete(main)
+  File "/usr/lib/python3.8/asyncio/base_events.py", line 603, in run_until_complete
+    self.run_forever()
+  File "/usr/lib/python3.8/asyncio/base_events.py", line 570, in run_forever
+    self._run_once()
+  File "/usr/lib/python3.8/asyncio/base_events.py", line 1859, in _run_once
+    handle._run()
+  File "/usr/lib/python3.8/asyncio/events.py", line 81, in _run
+    self._context.run(self._callback, *self._args)
+  File "/home/inkuxuan/vspc-bot/.venv/lib/python3.8/site-packages/discord/client.py", line 481, in _run_event
+    await coro(*args, **kwargs)
+  File "/home/inkuxuan/vspc-bot/cogs/announcement.py", line 65, in on_raw_reaction_add
+    await self._process_approved_announcement(message)
+  File "/home/inkuxuan/vspc-bot/cogs/announcement.py", line 105, in _process_approved_announcement
+    job_id = await self.scheduler.schedule_announcement(
+  File "/home/inkuxuan/vspc-bot/utils/scheduler.py", line 39, in schedule_announcement
+    'timestamp': timestamp,
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/_vendored/pydevd/_pydevd_bundle/pydevd_frame.py", line 1197, in trace_dispatch
+    self.do_wait_suspend(thread, frame, event, arg)
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/_vendored/pydevd/_pydevd_bundle/pydevd_frame.py", line 165, in do_wait_suspend
+    self._args[0].do_wait_suspend(*args, **kwargs)
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/_vendored/pydevd/pydevd.py", line 2070, in do_wait_suspend
+    keep_suspended = self._do_wait_suspend(thread, frame, event, arg, suspend_type, from_this_thread, frames_tracker)
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/_vendored/pydevd/pydevd.py", line 2106, in _do_wait_suspend
+    time.sleep(0.01)
+
+2025-03-27 12:48:46,036 - discord.gateway - WARNING - Shard ID None heartbeat blocked for more than 40 seconds.
+Loop thread traceback (most recent call last):
+  File "/usr/lib/python3.8/runpy.py", line 194, in _run_module_as_main
+    return _run_code(code, main_globals, None,
+  File "/usr/lib/python3.8/runpy.py", line 87, in _run_code
+    exec(code, run_globals)
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/adapter/../../debugpy/launcher/../../debugpy/__main__.py", line 39, in <module>
+    cli.main()
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/adapter/../../debugpy/launcher/../../debugpy/../debugpy/server/cli.py", line 430, in main
+    run()
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/adapter/../../debugpy/launcher/../../debugpy/../debugpy/server/cli.py", line 284, in run_file
+    runpy.run_path(target, run_name="__main__")
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/_vendored/pydevd/_pydevd_bundle/pydevd_runpy.py", line 321, in run_path
+    return _run_module_code(code, init_globals, run_name,
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/_vendored/pydevd/_pydevd_bundle/pydevd_runpy.py", line 135, in _run_module_code
+    _run_code(code, mod_globals, init_globals,
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/_vendored/pydevd/_pydevd_bundle/pydevd_runpy.py", line 124, in _run_code
+    exec(code, run_globals)
+  File "/home/inkuxuan/vspc-bot/bot.py", line 95, in <module>
+    asyncio.run(main())
+  File "/usr/lib/python3.8/asyncio/runners.py", line 44, in run
+    return loop.run_until_complete(main)
+  File "/usr/lib/python3.8/asyncio/base_events.py", line 603, in run_until_complete
+    self.run_forever()
+  File "/usr/lib/python3.8/asyncio/base_events.py", line 570, in run_forever
+    self._run_once()
+  File "/usr/lib/python3.8/asyncio/base_events.py", line 1859, in _run_once
+    handle._run()
+  File "/usr/lib/python3.8/asyncio/events.py", line 81, in _run
+    self._context.run(self._callback, *self._args)
+  File "/home/inkuxuan/vspc-bot/.venv/lib/python3.8/site-packages/discord/client.py", line 481, in _run_event
+    await coro(*args, **kwargs)
+  File "/home/inkuxuan/vspc-bot/cogs/announcement.py", line 65, in on_raw_reaction_add
+    await self._process_approved_announcement(message)
+  File "/home/inkuxuan/vspc-bot/cogs/announcement.py", line 116, in _process_approved_announcement
+    embed.add_field(name="投稿日時", value=result["formatted_date_time"], inline=False)
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/_vendored/pydevd/_pydevd_bundle/pydevd_frame.py", line 1197, in trace_dispatch
+    self.do_wait_suspend(thread, frame, event, arg)
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/_vendored/pydevd/_pydevd_bundle/pydevd_frame.py", line 165, in do_wait_suspend
+    self._args[0].do_wait_suspend(*args, **kwargs)
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/_vendored/pydevd/pydevd.py", line 2070, in do_wait_suspend
+    keep_suspended = self._do_wait_suspend(thread, frame, event, arg, suspend_type, from_this_thread, frames_tracker)
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/_vendored/pydevd/pydevd.py", line 2106, in _do_wait_suspend
+    time.sleep(0.01)
+
+2025-03-27 12:48:56,038 - discord.gateway - WARNING - Shard ID None heartbeat blocked for more than 50 seconds.
+Loop thread traceback (most recent call last):
+  File "/usr/lib/python3.8/runpy.py", line 194, in _run_module_as_main
+    return _run_code(code, main_globals, None,
+  File "/usr/lib/python3.8/runpy.py", line 87, in _run_code
+    exec(code, run_globals)
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/adapter/../../debugpy/launcher/../../debugpy/__main__.py", line 39, in <module>
+    cli.main()
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/adapter/../../debugpy/launcher/../../debugpy/../debugpy/server/cli.py", line 430, in main
+    run()
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/adapter/../../debugpy/launcher/../../debugpy/../debugpy/server/cli.py", line 284, in run_file
+    runpy.run_path(target, run_name="__main__")
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/_vendored/pydevd/_pydevd_bundle/pydevd_runpy.py", line 321, in run_path
+    return _run_module_code(code, init_globals, run_name,
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/_vendored/pydevd/_pydevd_bundle/pydevd_runpy.py", line 135, in _run_module_code
+    _run_code(code, mod_globals, init_globals,
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/_vendored/pydevd/_pydevd_bundle/pydevd_runpy.py", line 124, in _run_code
+    exec(code, run_globals)
+  File "/home/inkuxuan/vspc-bot/bot.py", line 95, in <module>
+    asyncio.run(main())
+  File "/usr/lib/python3.8/asyncio/runners.py", line 44, in run
+    return loop.run_until_complete(main)
+  File "/usr/lib/python3.8/asyncio/base_events.py", line 603, in run_until_complete
+    self.run_forever()
+  File "/usr/lib/python3.8/asyncio/base_events.py", line 570, in run_forever
+    self._run_once()
+  File "/usr/lib/python3.8/asyncio/base_events.py", line 1859, in _run_once
+    handle._run()
+  File "/usr/lib/python3.8/asyncio/events.py", line 81, in _run
+    self._context.run(self._callback, *self._args)
+  File "/home/inkuxuan/vspc-bot/.venv/lib/python3.8/site-packages/discord/client.py", line 481, in _run_event
+    await coro(*args, **kwargs)
+  File "/home/inkuxuan/vspc-bot/cogs/announcement.py", line 65, in on_raw_reaction_add
+    await self._process_approved_announcement(message)
+  File "/home/inkuxuan/vspc-bot/cogs/announcement.py", line 123, in _process_approved_announcement
+    embed.add_field(name="内容", value=content, inline=False)
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/_vendored/pydevd/_pydevd_bundle/pydevd_frame.py", line 1197, in trace_dispatch
+    self.do_wait_suspend(thread, frame, event, arg)
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/_vendored/pydevd/_pydevd_bundle/pydevd_frame.py", line 165, in do_wait_suspend
+    self._args[0].do_wait_suspend(*args, **kwargs)
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/_vendored/pydevd/pydevd.py", line 2070, in do_wait_suspend
+    keep_suspended = self._do_wait_suspend(thread, frame, event, arg, suspend_type, from_this_thread, frames_tracker)
+  File "/home/inkuxuan/.cursor-server/extensions/ms-python.debugpy-2024.6.0-linux-x64/bundled/libs/debugpy/_vendored/pydevd/pydevd.py", line 2106, in _do_wait_suspend
+    time.sleep(0.01)
+
+2025-03-27 12:49:00,296 - discord.gateway - INFO - Shard ID None has successfully RESUMED session a8ee94f8b9f4218de5cc10d125374a19.
+2025-03-27 12:49:15,899 - discord.ext.commands.bot - ERROR - Ignoring exception in command None
+discord.ext.commands.errors.CommandNotFound: Command "list" is not found
+2025-03-27 12:49:24,342 - apscheduler.scheduler - INFO - Removed job 36201eb4-0511-4640-b11e-38ee91cd2018
+2025-03-27 12:49:24,344 - discord.ext.commands.bot - ERROR - Ignoring exception in command None
+discord.ext.commands.errors.CommandNotFound: Command "cancel" is not found
+2025-03-27 13:05:34,329 - __main__ - INFO - Loading environment from: .test.env
+2025-03-27 13:05:34,343 - discord.client - WARNING - PyNaCl is not installed, voice will NOT be supported
+2025-03-27 13:05:34,346 - __main__ - INFO - Starting bot...
+2025-03-27 13:05:34,346 - discord.client - INFO - logging in using static token
+2025-03-27 13:05:34,812 - utils.vrchat_api - INFO - Attempting cookie authentication
+2025-03-27 13:05:35,173 - utils.vrchat_api - INFO - Successfully authenticated with saved cookie as いんく「さよなら夏」
+2025-03-27 13:05:35,174 - __main__ - INFO - Authenticated with VRChat as いんく「さよなら夏」
+2025-03-27 13:05:35,180 - apscheduler.scheduler - INFO - Scheduler started
+2025-03-27 13:05:35,183 - __main__ - ERROR - Bot error: The command help is already an existing command or alias.
+2025-03-27 13:05:35,186 - apscheduler.scheduler - INFO - Scheduler has been shut down
+2025-03-27 13:05:35,849 - asyncio - ERROR - Unclosed connector
+connections: ['[(<aiohttp.client_proto.ResponseHandler object at 0x7f5bf5ec5340>, 15244.353659339)]']
+connector: <aiohttp.connector.TCPConnector object at 0x7f5bf5f65280>
+2025-03-27 13:09:46,436 - __main__ - INFO - Loading environment from: .test.env
+2025-03-27 13:09:46,451 - discord.client - WARNING - PyNaCl is not installed, voice will NOT be supported
+2025-03-27 13:09:46,453 - __main__ - INFO - Starting bot...
+2025-03-27 13:09:46,454 - discord.client - INFO - logging in using static token
+2025-03-27 13:09:46,922 - utils.vrchat_api - INFO - Attempting cookie authentication
+2025-03-27 13:09:47,248 - utils.vrchat_api - INFO - Successfully authenticated with saved cookie as いんく「さよなら夏」
+2025-03-27 13:09:47,248 - __main__ - INFO - Authenticated with VRChat as いんく「さよなら夏」
+2025-03-27 13:09:47,255 - apscheduler.scheduler - INFO - Scheduler started
+2025-03-27 13:09:47,258 - __main__ - INFO - Syncing application commands with Discord...
+2025-03-27 13:09:47,484 - __main__ - INFO - Command synchronization complete
+2025-03-27 13:09:47,484 - __main__ - INFO - Bot setup complete
+2025-03-27 13:09:47,909 - discord.gateway - INFO - Shard ID None has connected to Gateway (Session ID: 0e8e73e6147c893a1e96475725cf7ef9).
+2025-03-27 13:09:49,922 - __main__ - INFO - Logged in as AnnouncementManager (1306499718313938974)
+2025-03-27 13:09:49,923 - __main__ - INFO - Monitoring channel ID: 1354741091869524100
+2025-03-27 13:17:29,683 - __main__ - INFO - Loading environment from: .test.env
+2025-03-27 13:17:29,697 - discord.client - WARNING - PyNaCl is not installed, voice will NOT be supported
+2025-03-27 13:17:29,699 - __main__ - INFO - Starting bot...
+2025-03-27 13:17:29,699 - discord.client - INFO - logging in using static token
+2025-03-27 13:17:30,149 - utils.vrchat_api - INFO - Attempting cookie authentication
+2025-03-27 13:17:31,177 - utils.vrchat_api - INFO - Successfully authenticated with saved cookie as いんく「さよなら夏」
+2025-03-27 13:17:31,177 - __main__ - INFO - Authenticated with VRChat as いんく「さよなら夏」
+2025-03-27 13:17:31,183 - apscheduler.scheduler - INFO - Scheduler started
+2025-03-27 13:17:31,187 - __main__ - ERROR - Bot error: The command help is already an existing command or alias.
+2025-03-27 13:17:31,189 - apscheduler.scheduler - INFO - Scheduler has been shut down
+2025-03-27 13:17:31,780 - asyncio - ERROR - Unclosed connector
+connections: ['[(<aiohttp.client_proto.ResponseHandler object at 0x7f214a04c340>, 15959.690921197)]']
+connector: <aiohttp.connector.TCPConnector object at 0x7f214a0f7ca0>
+2025-03-27 13:20:10,198 - __main__ - INFO - Loading environment from: .test.env
+2025-03-27 13:20:10,214 - discord.client - WARNING - PyNaCl is not installed, voice will NOT be supported
+2025-03-27 13:20:10,216 - __main__ - INFO - Starting bot...
+2025-03-27 13:20:10,216 - discord.client - INFO - logging in using static token
+2025-03-27 13:20:10,723 - utils.vrchat_api - INFO - Attempting cookie authentication
+2025-03-27 13:20:11,018 - utils.vrchat_api - INFO - Successfully authenticated with saved cookie as いんく「さよなら夏」
+2025-03-27 13:20:11,018 - __main__ - INFO - Authenticated with VRChat as いんく「さよなら夏」
+2025-03-27 13:20:11,026 - apscheduler.scheduler - INFO - Scheduler started
+2025-03-27 13:20:11,029 - __main__ - INFO - Syncing application commands with Discord...
+2025-03-27 13:20:11,292 - __main__ - INFO - Command synchronization complete
+2025-03-27 13:20:11,292 - __main__ - INFO - Bot setup complete
+2025-03-27 13:20:11,647 - discord.gateway - INFO - Shard ID None has connected to Gateway (Session ID: e9a47490309cb760794c6ca9e718f28c).
+2025-03-27 13:20:13,666 - __main__ - INFO - Logged in as AnnouncementManager (1306499718313938974)
+2025-03-27 13:20:13,667 - __main__ - INFO - Monitoring channel ID: 1354741091869524100
+2025-03-27 13:20:46,729 - __main__ - INFO - Loading environment from: .test.env
+2025-03-27 13:20:46,745 - discord.client - WARNING - PyNaCl is not installed, voice will NOT be supported
+2025-03-27 13:20:46,747 - __main__ - INFO - Starting bot...
+2025-03-27 13:20:46,747 - discord.client - INFO - logging in using static token
+2025-03-27 13:20:47,166 - utils.vrchat_api - INFO - Attempting cookie authentication
+2025-03-27 13:20:47,428 - utils.vrchat_api - INFO - Successfully authenticated with saved cookie as いんく「さよなら夏」
+2025-03-27 13:20:47,428 - __main__ - INFO - Authenticated with VRChat as いんく「さよなら夏」
+2025-03-27 13:20:47,435 - apscheduler.scheduler - INFO - Scheduler started
+2025-03-27 13:20:47,438 - __main__ - ERROR - Bot error: The command help is already an existing command or alias.
+2025-03-27 13:20:47,441 - apscheduler.scheduler - INFO - Scheduler has been shut down
+2025-03-27 13:20:48,252 - asyncio - ERROR - Unclosed connector
+connections: ['[(<aiohttp.client_proto.ResponseHandler object at 0x7f0392ab24c0>, 16156.707797295)]']
+connector: <aiohttp.connector.TCPConnector object at 0x7f0392ae8df0>
+2025-03-27 13:22:22,428 - __main__ - INFO - Loading environment from: .test.env
+2025-03-27 13:22:22,443 - discord.client - WARNING - PyNaCl is not installed, voice will NOT be supported
+2025-03-27 13:22:22,445 - __main__ - INFO - Starting bot...
+2025-03-27 13:22:22,446 - discord.client - INFO - logging in using static token
+2025-03-27 13:22:22,888 - utils.vrchat_api - INFO - Attempting cookie authentication
+2025-03-27 13:22:23,164 - utils.vrchat_api - INFO - Successfully authenticated with saved cookie as いんく「さよなら夏」
+2025-03-27 13:22:23,165 - __main__ - INFO - Authenticated with VRChat as いんく「さよなら夏」
+2025-03-27 13:22:23,172 - apscheduler.scheduler - INFO - Scheduler started
+2025-03-27 13:22:23,175 - __main__ - INFO - Syncing application commands with Discord...
+2025-03-27 13:22:23,383 - __main__ - INFO - Command synchronization complete
+2025-03-27 13:22:23,383 - __main__ - INFO - Bot setup complete
+2025-03-27 13:22:23,809 - discord.gateway - INFO - Shard ID None has connected to Gateway (Session ID: b55733d608876a11fdaa0f7e067fb72c).
+2025-03-27 13:22:25,822 - __main__ - INFO - Logged in as AnnouncementManager (1306499718313938974)
+2025-03-27 13:22:25,823 - __main__ - INFO - Monitoring channel ID: 1354741091869524100
