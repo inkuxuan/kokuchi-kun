@@ -1,0 +1,342 @@
+import logging
+import os
+import json
+import vrchatapi
+import sys
+from vrchatapi.api.authentication_api import AuthenticationApi
+from vrchatapi.api.groups_api import GroupsApi
+from vrchatapi.exceptions import UnauthorizedException, ApiException
+from vrchatapi.models.two_factor_auth_code import TwoFactorAuthCode
+from vrchatapi.models.two_factor_email_code import TwoFactorEmailCode
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+# Add a console handler to ensure logs are output immediately
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
+class VRChatAPI:
+    def __init__(self, config):
+        """Initialize with configuration but don't connect yet"""
+        self.username = config['username']
+        self.password = config['password']
+        self.group_id = config['group_id']
+        self.authenticated = False
+        self.api_client = None
+        self.current_user = None
+        self.cookie_file = config.get('cookie_file', 'vrchat_session.json')
+    
+    def initialize(self):
+        """Initialize and authenticate with VRChat"""
+        # Try to authenticate with saved cookies first
+        if self._try_cookie_auth():
+            return {
+                "success": True,
+                "user_id": self.current_user.id,
+                "display_name": self.current_user.display_name,
+                "method": "cookie"
+            }
+        
+        # Fall back to username/password auth
+        return self._authenticate_with_credentials()
+    
+    def _try_cookie_auth(self):
+        """Try to authenticate using saved cookies"""
+        logger.info("Attempting cookie authentication")
+        
+        try:
+            if not os.path.exists(self.cookie_file):
+                logger.warning("No saved session found")
+                return False
+                
+            with open(self.cookie_file, 'r') as f:
+                cookie_data = json.load(f)
+                
+            auth_cookie = cookie_data.get('authCookie')
+            two_factor_cookie = cookie_data.get('twoFactorAuthCookie')
+            
+            if not auth_cookie:
+                logger.warning("No auth cookie found in saved session")
+                return False
+                
+            # Create a basic configuration
+            configuration = vrchatapi.Configuration()
+            
+            # Create a new API client
+            self.api_client = vrchatapi.ApiClient(configuration)
+            self.api_client.user_agent = "VRChatAnnounceBotPython/1.0.0 mail@sayonara-natsu.com"
+            
+            # Create and set cookies directly in the cookie jar
+            from http.cookiejar import Cookie
+            
+            def make_cookie(name, value):
+                return Cookie(
+                    0,                  # version
+                    name,               # name
+                    value,              # value
+                    None,               # port
+                    False,              # port_specified
+                    "api.vrchat.cloud", # domain (important!)
+                    True,               # domain_specified
+                    False,              # domain_initial_dot
+                    "/",                # path (important!)
+                    False,              # path_specified
+                    False,              # secure
+                    173106866300,       # expires (doesn't matter much)
+                    False,              # discard
+                    None,               # comment
+                    None,               # comment_url
+                    {}                  # rest
+                )
+            
+            # Set the auth cookie
+            self.api_client.rest_client.cookie_jar.set_cookie(
+                make_cookie("auth", auth_cookie)
+            )
+            
+            # Set the 2FA cookie if available
+            if two_factor_cookie:
+                self.api_client.rest_client.cookie_jar.set_cookie(
+                    make_cookie("twoFactorAuth", two_factor_cookie)
+                )
+            
+            # Try to get current user to validate cookie
+            auth_api = AuthenticationApi(self.api_client)
+            
+            try:
+                self.current_user = auth_api.get_current_user()
+                self.authenticated = True
+                
+                logger.info(f"Successfully authenticated with saved cookie as {self.current_user.display_name}")
+                return True
+            except UnauthorizedException as e:
+                logger.warning(f"Cookie authentication failed - unauthorized: {e.reason}")
+                return False
+            except ApiException as e:
+                logger.warning(f"Cookie authentication failed - API error: {str(e)}")
+                return False
+            
+        except Exception as e:
+            logger.warning(f"Cookie authentication failed: {str(e)}")
+            # Clean up if cookie auth failed
+            if self.api_client:
+                self.api_client.close()
+                self.api_client = None
+            self.authenticated = False
+            self.current_user = None
+            return False
+    
+    def _save_cookies(self):
+        """Save authentication cookies to file"""
+        if not self.api_client or not self.authenticated:
+            return False
+            
+        try:
+            cookies = {}
+            
+            # Extract cookies properly from the cookie jar
+            # This matches how the official example accesses cookies
+            if hasattr(self.api_client.rest_client, 'cookie_jar') and hasattr(self.api_client.rest_client.cookie_jar, '_cookies'):
+                cookie_jar = self.api_client.rest_client.cookie_jar._cookies
+                
+                # Check if the VRChat domain exists
+                if "api.vrchat.cloud" in cookie_jar and "/" in cookie_jar["api.vrchat.cloud"]:
+                    domain_cookies = cookie_jar["api.vrchat.cloud"]["/"]
+                    
+                    if "auth" in domain_cookies:
+                        cookies['authCookie'] = domain_cookies["auth"].value
+                        
+                    if "twoFactorAuth" in domain_cookies:
+                        cookies['twoFactorAuthCookie'] = domain_cookies["twoFactorAuth"].value
+            
+            # Verify we have the auth cookie before saving
+            if 'authCookie' not in cookies:
+                logger.warning("No auth cookie found to save")
+                return False
+                
+            # Save to file
+            with open(self.cookie_file, 'w') as f:
+                json.dump(cookies, f)
+                
+            logger.info(f"VRChat session cookies saved to {self.cookie_file}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to save cookies: {str(e)}")
+            return False
+    
+    def _authenticate_with_credentials(self):
+        """Authenticate with username and password"""
+        # Create configuration with credentials
+        configuration = vrchatapi.Configuration(
+            username=self.username,
+            password=self.password,
+        )
+        
+        # Create a new API client
+        self.api_client = vrchatapi.ApiClient(configuration)
+        
+        # Set User-Agent as required by VRChat
+        self.api_client.user_agent = "VRChatAnnounceBotPython/1.0.0 mail@sayonara-natsu.com"
+        
+        # Try to authenticate
+        result = self._authenticate()
+        
+        # Save cookies if authentication was successful
+        if result.get('success') and self.authenticated:
+            self._save_cookies()
+            
+        return result
+    
+    def _authenticate(self):
+        """Internal method to authenticate with VRChat - interactive for 2FA"""
+        if not self.api_client:
+            return {"success": False, "error": "API client not initialized"}
+        
+        try:
+            # Create auth API instance
+            auth_api = AuthenticationApi(self.api_client)
+            
+            try:
+                # Attempt to get current user (this triggers authentication)
+                self.current_user = auth_api.get_current_user()
+                self.authenticated = True
+                
+                logger.info(f"Authenticated as {self.current_user.display_name}")
+                
+                # Save cookies after successful authentication
+                self._save_cookies()
+                
+                return {
+                    "success": True,
+                    "user_id": self.current_user.id,
+                    "display_name": self.current_user.display_name,
+                    "method": "password"
+                }
+                
+            except UnauthorizedException as e:
+                # Handle 2FA if needed
+                if e.status == 200:
+                    if "Email 2 Factor Authentication" in e.reason:
+                        # Interactive email 2FA
+                        print("\n==== Email 2FA Required ====")
+                        print("Please check your email for a verification code")
+                        email_code = input("Enter your email verification code: ")
+                        
+                        try:
+                            auth_api.verify2_fa_email_code(
+                                two_factor_email_code=TwoFactorEmailCode(code=email_code)
+                            )
+                            logger.info("Email 2FA verified successfully")
+                        except Exception as e2:
+                            logger.error(f"Email 2FA failed: {str(e2)}")
+                            return {"success": False, "error": f"Email 2FA failed: {str(e2)}"}
+                            
+                    elif "2 Factor Authentication" in e.reason:
+                        # Interactive TOTP 2FA
+                        print("\n==== TOTP 2FA Required ====")
+                        print("Please open your authenticator app")
+                        totp_code = input("Enter your authenticator code: ")
+                        
+                        try:
+                            auth_api.verify2_fa(
+                                two_factor_auth_code=TwoFactorAuthCode(code=totp_code)
+                            )
+                            logger.info("TOTP 2FA verified successfully")
+                        except Exception as e2:
+                            logger.error(f"TOTP 2FA failed: {str(e2)}")
+                            return {"success": False, "error": f"TOTP 2FA failed: {str(e2)}"}
+                    
+                    # Try again after 2FA
+                    try:
+                        self.current_user = auth_api.get_current_user()
+                        self.authenticated = True
+                        
+                        logger.info(f"Authenticated with 2FA as {self.current_user.display_name}")
+                        return {
+                            "success": True,
+                            "user_id": self.current_user.id,
+                            "display_name": self.current_user.display_name
+                        }
+                    except ApiException as e2:
+                        logger.error(f"Error after 2FA: {str(e2)}")
+                        return {"success": False, "error": f"Authentication failed after 2FA: {str(e2)}"}
+                else:
+                    logger.error(f"Authentication error: {e.reason}")
+                    return {"success": False, "error": f"Authentication failed: {e.reason}"}
+                    
+            except ApiException as e:
+                logger.error(f"API error during authentication: {str(e)}")
+                return {"success": False, "error": f"API error: {str(e)}"}
+                
+        except Exception as e:
+            logger.error(f"Unexpected error during authentication: {str(e)}")
+            return {"success": False, "error": f"Unexpected error: {str(e)}"}
+    
+    def authenticate(self):
+        """Public method to authenticate or re-authenticate"""
+        return self._authenticate()
+        
+
+    def post_announcement(self, title, content):
+        """Post in the group with notification"""
+        if not self.authenticated or not self.api_client:
+            return {"success": False, "error": "Not authenticated"}
+        
+        try:
+            # Create groups API instance
+            groups_api = GroupsApi(self.api_client)
+            
+            # Create a post with notification
+            logger.info(f"Posting to group {self.group_id}")
+            group_post = groups_api.add_group_post(
+                group_id=self.group_id,
+                create_group_post_request={
+                    "title": title,
+                    "text": content,
+                    "sendNotification": True
+                }
+            )
+            
+            return {
+                "success": True,
+                "group_post": group_post
+            }
+        except Exception as e:
+            logger.error(f"Error posting announcement: {e}")
+            return {"success": False, "error": str(e)}
+    
+    def delete_post(self, notification_id):
+        """Delete a post"""
+        if not self.authenticated or not self.api_client:
+            return {"success": False, "error": "Not authenticated"}
+        
+        try:
+            # Create groups API instance
+            groups_api = GroupsApi(self.api_client) 
+            
+            # Delete the post
+            groups_api.delete_group_post(
+                group_id=self.group_id,
+                notification_id=notification_id
+            )
+            
+            return {
+                "success": True,
+                "message": "Post deleted successfully"
+            }
+        except Exception as e:  
+            logger.error(f"Error deleting post: {e}")
+            return {"success": False, "error": str(e)}
+    
+    def close(self):
+        """Close the API client"""
+        if self.api_client:
+            self.api_client.close()
+            self.api_client = None
+            self.authenticated = False
+            self.current_user = None 

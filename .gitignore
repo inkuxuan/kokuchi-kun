@@ -1,0 +1,29 @@
+# Environment variables
+.env
+.prd.env
+*.env
+
+# Other common exclusions
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+vrchat_session.json
