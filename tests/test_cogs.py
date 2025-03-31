@@ -25,7 +25,7 @@ class TestCogs:
         """Create a mock configuration."""
         return {
             'discord': {
-                'channel_id': 987654321,
+                'channel_ids': [987654321],
                 'admin_role_id': 111222333,
                 'prefix': '!',
                 'seen_reaction_emoji': "👀",

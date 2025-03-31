@@ -1,6 +1,8 @@
 discord:
   prefix: "!"
-  channel_ids: [1332597388153589820]  # List of channel IDs to monitor
+  channel_ids: # List of channel IDs to monitor
+    - 1332597388153589820
+    - 1354741091869524100
   admin_role_id: 1320711513698472008
   seen_reaction_emoji: "👀"
   approval_reaction_emoji: "👍"
