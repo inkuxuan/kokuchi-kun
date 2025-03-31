@@ -51,7 +51,8 @@ class VRChatAnnounceBot(commands.Bot):
         
         super().__init__(
             command_prefix=config['discord']['prefix'],
-            intents=intents
+            intents=intents,
+            help_command=None  # Disable the default help command
         )
         
         self.config = config
@@ -76,7 +77,7 @@ class VRChatAnnounceBot(commands.Bot):
             self.config['vrchat'] = {}
         self.config['vrchat']['username'] = os.getenv('VRCHAT_USERNAME')
         self.config['vrchat']['password'] = os.getenv('VRCHAT_PASSWORD')
-        self.config['vrchat']['group_id'] = os.getenv('VRCHAT_GROUP_ID')
+        # group_id is now loaded from config.yaml
         
     async def setup_hook(self):
         # Initialize VRChat API
@@ -108,7 +109,7 @@ class VRChatAnnounceBot(commands.Bot):
     
     async def on_ready(self):
         logger.info(f"Logged in as {self.user.name} ({self.user.id})")
-        logger.info(f"Monitoring channel ID: {self.config['discord']['channel_id']}")
+        logger.info(f"Monitoring channel IDs: {', '.join(map(str, self.config['discord']['channel_ids']))}")
 
 async def main():
     # Parse command-line arguments
