@@ -1,11 +1,14 @@
 discord:
   prefix: "!"
-  channel_id: 1354741091869524100
+  channel_ids: [1332597388153589820]  # List of channel IDs to monitor
   admin_role_id: 1320711513698472008
   seen_reaction_emoji: "👀"
   approval_reaction_emoji: "👍"
 
 openrouter:
   model: "deepseek/deepseek-chat-v3-0324:free"
+
+vrchat:
+  group_id: "grp_55712cfd-77ab-464f-8174-1483616c0c89"
 
 # Other non-sensitive configuration can remain here
