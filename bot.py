@@ -136,7 +136,9 @@ async def main():
             return
         await bot.start(bot.config['discord']['token'])
     except Exception as e:
+        import traceback
         logger.error(f"Bot error: {e}")
+        logger.error(f"Stack trace:\n{traceback.format_exc()}")
     finally:
         # Cleanup
         if hasattr(bot, 'scheduler'):

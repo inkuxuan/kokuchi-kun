@@ -11,14 +11,14 @@ class AdminCog(commands.Cog):
         self.bot = bot
         self.config = config
         self.scheduler = scheduler
-        self.channel_id = config['discord']['channel_id']
+        self.channel_ids = config['discord']['channel_ids']  # List of channel IDs to monitor
         self.admin_role_id = config['discord']['admin_role_id']
         self.prefix = config['discord']['prefix']
     
     async def cog_check(self, ctx):
         """Permission check that applies to all commands in this cog"""
-        # Check if in the correct channel
-        if ctx.channel.id != self.channel_id:
+        # Check if in one of the monitored channels
+        if ctx.channel.id not in self.channel_ids:
             return False
             
         # Check for admin role
