@@ -17,7 +17,7 @@ class Scheduler:
         # Start the scheduler
         self.scheduler.start()
         
-    async def schedule_announcement(self, timestamp, title, content):
+    async def schedule_announcement(self, timestamp, title, content, message_id):
         """Schedule an announcement for the given timestamp"""
         job_id = str(uuid.uuid4())
         run_date = datetime.fromtimestamp(timestamp, tz=pytz.utc)
@@ -36,6 +36,7 @@ class Scheduler:
         # Store job info
         self.jobs[job_id] = {
             'id': job_id,
+            'message_id': message_id,
             'timestamp': timestamp,
             'formatted_date_time': datetime.fromtimestamp(timestamp).strftime('%Y年%m月%d日 %H:%M'),
             'title': title,
@@ -87,6 +88,13 @@ class Scheduler:
         except Exception as e:
             logger.error(f"Error cancelling job {job_id}: {e}")
             return False
+    
+    def cancel_job_by_message_id(self, message_id):
+        """Cancel a scheduled job by message ID"""
+        for job_id, job in list(self.jobs.items()):
+            if job['message_id'] == message_id:
+                return self.cancel_job(job_id)
+        return False
     
     def shutdown(self):
         """Shutdown the scheduler"""
