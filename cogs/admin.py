@@ -49,7 +49,7 @@ class AdminCog(commands.Cog):
                 content = content[:97] + "..."
                 
             embed.add_field(
-                name=f"ID: {job['id']} - {job['formatted_date_time']}",
+                name=f"ID: {job['id']} - <t:{int(job['timestamp'])}:F>",
                 value=f"タイトル: {job['title']}\n内容: {content}",
                 inline=False
             )
