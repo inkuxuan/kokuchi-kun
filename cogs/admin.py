@@ -3,6 +3,7 @@ from discord.ext import commands
 from discord import app_commands
 import logging
 from typing import Optional
+import tomli
 
 logger = logging.getLogger(__name__)
 
@@ -14,6 +15,15 @@ class AdminCog(commands.Cog):
         self.channel_ids = config['discord']['channel_ids']  # List of channel IDs to monitor
         self.admin_role_id = config['discord']['admin_role_id']
         self.prefix = config['discord']['prefix']
+        
+        # Load version from pyproject.toml
+        try:
+            with open('pyproject.toml', 'rb') as f:
+                pyproject = tomli.load(f)
+                self.version = pyproject['project']['version']
+        except Exception as e:
+            logger.error(f"Failed to load version from pyproject.toml: {e}")
+            self.version = "unknown"
     
     async def cog_check(self, ctx):
         """Permission check that applies to all commands in this cog"""
@@ -84,6 +94,9 @@ class AdminCog(commands.Cog):
         embed.add_field(name=f"{prefix}list または /list", value="予約されている告知の一覧を表示", inline=False)
         embed.add_field(name=f"{prefix}cancel [ジョブID] または /cancel", value="指定されたジョブIDの告知をキャンセル", inline=False)
         embed.add_field(name=f"{prefix}help または /help", value="このヘルプメッセージを表示", inline=False)
+        
+        # Add version information
+        embed.set_footer(text=f"Version: {self.version}")
         
         await ctx.reply(embed=embed)
     
