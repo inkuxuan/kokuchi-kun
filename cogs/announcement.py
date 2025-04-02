@@ -97,7 +97,7 @@ class AnnouncementCog(commands.Cog):
                 title="告知が予約されました",
                 color=discord.Color.green()
             )
-            embed.add_field(name="投稿日時", value=result["formatted_date_time"], inline=False)
+            embed.add_field(name="投稿日時", value=f"<t:{int(result['timestamp'])}:F>", inline=False)
             embed.add_field(name="タイトル", value=result["title"], inline=False)
             
             content = result["content"]
