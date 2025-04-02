@@ -126,9 +126,9 @@ class AnnouncementCog(commands.Cog):
                     except Exception as e:
                         logger.error(f"Error deleting scheduled message: {e}")
                 
-                # Clean up tracking
+                # Clean up tracking - keep in pending_requests but clear scheduled message ID
                 self.queued_announcements.remove(str(message.id))
-                del self.pending_requests[str(message.id)]
+                self.pending_requests[str(message.id)] = None
                 
                 await message.reply("告知の予約がキャンセルされました。")
     
