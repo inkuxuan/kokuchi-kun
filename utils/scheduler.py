@@ -73,8 +73,13 @@ class Scheduler:
             logger.error(f"Error executing scheduled job {job_id}: {e}")
     
     def list_jobs(self):
-        """List all scheduled jobs"""
-        return list(self.jobs.values())
+        """List all active scheduled jobs"""
+        active_jobs = []
+        for job in self.jobs.values():
+            # Check if the job still exists in the scheduler
+            if self.scheduler.get_job(job['id']) is not None:
+                active_jobs.append(job)
+        return active_jobs
     
     def cancel_job(self, job_id):
         """Cancel a scheduled job"""
