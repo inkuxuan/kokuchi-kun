@@ -6,6 +6,8 @@ import argparse
 from dotenv import load_dotenv
 import discord
 from discord.ext import commands
+import traceback
+import uuid
 
 from utils.vrchat_api import VRChatAPI
 from utils.ai_processor import AIProcessor
@@ -43,106 +45,117 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 class VRChatAnnounceBot(commands.Bot):
-    def __init__(self, config, args):
+    def __init__(self, config):
         intents = discord.Intents.default()
         intents.message_content = True
         intents.reactions = True
-        intents.members = True
         
         super().__init__(
             command_prefix=config['discord']['prefix'],
-            intents=intents,
-            help_command=None  # Disable the default help command
+            intents=intents
         )
         
         self.config = config
-        self.args = args
+        self.otp_requests = {}  # Store OTP requests and their futures
         
-        # Add sensitive environment variables to config
-        self._load_env_variables()
-        
-    def _load_env_variables(self):
-        """Load sensitive data from environment variables into config"""
-        # Discord
-        self.config['discord']['token'] = os.getenv('DISCORD_TOKEN')
-        
-        # OpenRouter - only load the API key, keep model in config
-        if 'openrouter' not in self.config:
-            self.config['openrouter'] = {}
-        self.config['openrouter']['api_key'] = os.getenv('OPENROUTER_API_KEY')
-        # Model remains in config.yaml
-        
-        # VRChat
-        if 'vrchat' not in self.config:
-            self.config['vrchat'] = {}
-        self.config['vrchat']['username'] = os.getenv('VRCHAT_USERNAME')
-        self.config['vrchat']['password'] = os.getenv('VRCHAT_PASSWORD')
-        # group_id is now loaded from config.yaml
+        # Initialize components
+        self.vrchat_api = VRChatAPI(config['vrchat'])
+        self.scheduler = Scheduler(self.vrchat_api)
+        self.ai_processor = AIProcessor(config['openrouter'])
         
     async def setup_hook(self):
-        # Initialize VRChat API
-        self.vrchat_api = VRChatAPI(self.config['vrchat'])
-        auth_result = self.vrchat_api.initialize()
-        
-        if not auth_result.get('success', False):
-            logger.warning(f"VRChat authentication failed: {auth_result.get('error', 'Unknown error')}")
-            logger.warning("Bot will start, but VRChat posting will not work until authentication is successful")
-        else:
-            logger.info(f"Authenticated with VRChat as {auth_result.get('display_name', 'Unknown')}")
-        
-        # Initialize AI Processor
-        self.ai_processor = AIProcessor(self.config['openrouter'])
-        
-        # Initialize Scheduler
-        self.scheduler = Scheduler(self.vrchat_api)
-        
-        # Add cogs
-        await self.add_cog(AnnouncementCog(self, self.config, self.ai_processor, self.scheduler))
-        await self.add_cog(AdminCog(self, self.config, self.scheduler))
-        
-        # Always sync commands with Discord
-        logger.info("Syncing application commands with Discord...")
-        await self.tree.sync()
-        logger.info("Command synchronization complete")
-        
-        logger.info("Bot setup complete")
+        """Set up the bot's components"""
+        try:
+            # Set up OTP callback before initializing VRChat API
+            self.vrchat_api.set_otp_callback(self._request_otp)
+            
+            # Initialize VRChat API
+            auth_result = await self.vrchat_api.initialize()
+            if not auth_result.get('success', False):
+                logger.error(f"Failed to initialize VRChat API: {auth_result.get('error', 'Unknown error')}")
+                return
+            
+            # Add cogs
+            await self.add_cog(AnnouncementCog(self, self.config, self.ai_processor, self.scheduler))
+            await self.add_cog(AdminCog(self, self.config, self.scheduler))
+            
+            logger.info("Bot setup completed successfully")
+            
+        except Exception as e:
+            logger.error(f"Error during bot setup: {e}")
+            logger.error(f"Stack trace:\n{traceback.format_exc()}")
     
-    async def on_ready(self):
-        logger.info(f"Logged in as {self.user.name} ({self.user.id})")
-        logger.info(f"Monitoring channel IDs: {', '.join(map(str, self.config['discord']['channel_ids']))}")
+    async def _request_otp(self, otp_type):
+        """Request OTP from admin through Discord"""
+        # Get the first channel from config
+        channel = self.get_channel(self.config['discord']['channel_ids'][0])
+        if not channel:
+            logger.error("Could not find channel for OTP request")
+            return None
+            
+        # Create a unique request ID
+        request_id = str(uuid.uuid4())
+        
+        # Create a future to wait for the response
+        future = asyncio.Future()
+        self.otp_requests[request_id] = future
+        
+        # Send OTP request message
+        role_mention = f"<@&{self.config['discord']['admin_role_id']}>"
+        message = await channel.send(
+            f"{role_mention} VRChatの認証に{otp_type}が必要です。"
+            f"認証コードを入力してください。"
+        )
+        
+        try:
+            # Wait for response with timeout
+            otp = await asyncio.wait_for(future, timeout=300)  # 5 minute timeout
+            return otp
+        except asyncio.TimeoutError:
+            await message.edit(content=f"{role_mention} OTPリクエストがタイムアウトしました。")
+            return None
+        finally:
+            # Clean up
+            if request_id in self.otp_requests:
+                del self.otp_requests[request_id]
+    
+    async def on_message(self, message):
+        """Handle incoming messages"""
+        # Check for OTP response
+        if message.author.bot:
+            return
+            
+        # Check if this is an OTP response
+        if message.channel.id in self.config['discord']['channel_ids']:
+            # Check if the user has admin role
+            member = await message.guild.fetch_member(message.author.id)
+            if member and self.config['discord']['admin_role_id'] in [role.id for role in member.roles]:
+                # Check if this is a response to an OTP request
+                for request_id, future in list(self.otp_requests.items()):
+                    if not future.done():
+                        # Set the OTP value
+                        future.set_result(message.content.strip())
+                        # Delete the message for security
+                        await message.delete()
+                        return
+        
+        # Process other messages
+        await self.process_commands(message)
 
 async def main():
-    # Parse command-line arguments
-    args = parse_arguments()
-    
-    # Load environment from specified file
-    load_environment(args.env)
-    
     # Load configuration
-    try:
-        with open('config.yaml', 'r', encoding='utf-8') as f:
-            config = yaml.safe_load(f)
-    except Exception as e:
-        logger.error(f"Failed to load config: {e}")
-        return
-        
-    # Create and run bot
-    bot = VRChatAnnounceBot(config, args)
+    with open('config.yaml', 'r') as f:
+        config = yaml.safe_load(f)
     
+    # Create and start the bot
+    bot = VRChatAnnounceBot(config)
     try:
-        logger.info("Starting bot...")
-        if not bot.config['discord']['token']:
-            logger.error("Discord token not found in environment variables!")
-            return
-        await bot.start(bot.config['discord']['token'])
+        await bot.start(config['discord']['token'])
     except Exception as e:
-        import traceback
-        logger.error(f"Bot error: {e}")
+        logger.error(f"Error starting bot: {e}")
         logger.error(f"Stack trace:\n{traceback.format_exc()}")
     finally:
-        # Cleanup
-        if hasattr(bot, 'scheduler'):
-            bot.scheduler.shutdown()
+        # Clean up
         if hasattr(bot, 'vrchat_api'):
             bot.vrchat_api.close()
 
