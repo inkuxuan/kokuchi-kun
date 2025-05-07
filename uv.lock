@@ -1794,7 +1794,7 @@ requires-dist = [
     { name = "pytz", specifier = ">=2025.2" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "tomli", specifier = ">=2.2.1" },
-    { name = "vrchatapi", specifier = ">=1.19.1" },
+    { name = "vrchatapi", specifier = ">=1.19.2" },
 ]
 
 [package.metadata.requires-dev]
@@ -1805,7 +1805,7 @@ dev = [
 
 [[package]]
 name = "vrchatapi"
-version = "1.19.1"
+version = "1.19.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "python-dateutil" },
@@ -1813,9 +1813,9 @@ dependencies = [
     { name = "urllib3", version = "2.2.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
     { name = "urllib3", version = "2.3.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.9'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/18/93/54a0368dd249c422018ea48f631690dd3b0347d26031ba0f3a00a05a17a6/vrchatapi-1.19.1.tar.gz", hash = "sha256:0e3653ca1d78b5a77d788900b3fadf94de9914c6ec7298a3bf63bca3c0d9c2dd", size = 230385 }
+sdist = { url = "https://files.pythonhosted.org/packages/79/58/213331be0a17075b7ac12b07a5fb6662919f34f2c832df7dd053b58577d8/vrchatapi-1.19.2.tar.gz", hash = "sha256:2b0801fff24554fead9cfbfa365ee05952a7c9e63e5875dcc2408d8350d868b8", size = 235674 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/61/69/44e56026b0618fbea7ffb5338af11b2cc2bf600df7b177fa81823a9cdaca/vrchatapi-1.19.1-py3-none-any.whl", hash = "sha256:0d41a5be8a79328527a7302c1d7b096088a2fdb91340bc6d0f7ae603df0980a2", size = 484645 },
+    { url = "https://files.pythonhosted.org/packages/59/3b/d9549a6aeaa5cfb15f220c179fd0d197cbd12de79f73ede9f9dbbb08a6e0/vrchatapi-1.19.2-py3-none-any.whl", hash = "sha256:5e47a4340a40559ded7864d13019400e8a4bd625512f489f01f2836cadfb57f1", size = 500126 },
 ]
 
 [[package]]

@@ -112,13 +112,6 @@ class VRChatAnnounceBot(commands.Bot):
             if not auth_result.get('success', False):
                 error_msg = auth_result.get('error', 'Unknown error')
                 logger.error(f"Failed to initialize VRChat API: {error_msg}")
-                
-                # If it's an avatar error, we can still proceed
-                if "current_avatar_asset_url" in error_msg:
-                    logger.warning("Avatar error detected, but continuing with limited functionality")
-                    return
-                    
-                # For other errors, we should stop
                 return
                 
             logger.info("VRChat API initialized successfully")
@@ -142,7 +135,7 @@ class VRChatAnnounceBot(commands.Bot):
         future = asyncio.Future()
         self.otp_requests[request_id] = future
         
-        # Send OTP request message
+        # Send OTP request message with role mention
         role_mention = f"<@&{self.config['discord']['admin_role_id']}>"
         message = await channel.send(
             f"{role_mention} VRChatの認証に{otp_type}が必要です。"
@@ -152,6 +145,9 @@ class VRChatAnnounceBot(commands.Bot):
         try:
             # Wait for response with timeout
             otp = await asyncio.wait_for(future, timeout=300)  # 5 minute timeout
+            if otp:
+                # Edit the original message to remove the mention
+                await message.edit(content=f"VRChatの認証に{otp_type}が必要です。認証コードを入力してください。")
             return otp
         except asyncio.TimeoutError:
             await message.edit(content=f"{role_mention} OTPリクエストがタイムアウトしました。")
@@ -163,7 +159,7 @@ class VRChatAnnounceBot(commands.Bot):
     
     async def on_message(self, message):
         """Handle incoming messages"""
-        # Check for OTP response
+        # Ignore bot messages
         if message.author.bot:
             return
             
@@ -181,8 +177,9 @@ class VRChatAnnounceBot(commands.Bot):
                         await message.delete()
                         return
         
-        # Process other messages
-        await self.process_commands(message)
+        # Only process commands if the bot is mentioned
+        if self.user in message.mentions:
+            await self.process_commands(message)
 
 async def main():
     # Parse command-line arguments

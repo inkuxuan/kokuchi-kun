@@ -2,6 +2,7 @@
 .env
 .prd.env
 *.env
+
 *.log
 
 # Other common exclusions
