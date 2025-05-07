@@ -40,7 +40,8 @@ class Scheduler:
             'timestamp': timestamp,
             'formatted_date_time': datetime.fromtimestamp(timestamp).strftime('%Y年%m月%d日 %H:%M'),
             'title': title,
-            'content': content
+            'content': content,
+            'status': 'pending'  # pending, success, failed
         }
         
         return job_id
@@ -55,6 +56,7 @@ class Scheduler:
                 auth_result = await self.vrchat_api.initialize()
                 if not auth_result['success']:
                     logger.error(f"Failed to authenticate for job {job_id}: {auth_result['error']}")
+                    self.jobs[job_id]['status'] = 'failed'
                     return
             
             # Post the announcement
@@ -62,15 +64,23 @@ class Scheduler:
             
             if result['success']:
                 logger.info(f"Successfully posted announcement to VRChat, post ID: {result['post_id']}")
+                self.jobs[job_id]['status'] = 'success'
             else:
                 logger.error(f"Failed to post announcement to VRChat: {result['error']}")
+                self.jobs[job_id]['status'] = 'failed'
                 
-            # Remove the job from the jobs dictionary
-            if job_id in self.jobs:
+                # If authentication failed, we'll retry after reauth
+                if "Authentication failed" in result['error']:
+                    # The post will be automatically retried after reauth
+                    return
+                
+            # Remove the job from the jobs dictionary if it succeeded
+            if self.jobs[job_id]['status'] == 'success':
                 del self.jobs[job_id]
                 
         except Exception as e:
             logger.error(f"Error executing scheduled job {job_id}: {e}")
+            self.jobs[job_id]['status'] = 'failed'
     
     def list_jobs(self):
         """List all active scheduled jobs"""

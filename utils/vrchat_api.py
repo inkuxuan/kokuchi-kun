@@ -29,11 +29,17 @@ class VRChatAPI:
         self.api_client = None
         self.current_user = None
         self.cookie_file = config.get('cookie_file', 'vrchat_session.json')
+        self.failed_posts = []  # Store failed posts for retry
+        self.otp_callback = None  # Callback function to request OTP
     
-    def initialize(self):
+    def set_otp_callback(self, callback):
+        """Set the callback function to request OTP"""
+        self.otp_callback = callback
+    
+    async def initialize(self):
         """Initialize and authenticate with VRChat"""
         # Try to authenticate with saved cookies first
-        if self._try_cookie_auth():
+        if await self._try_cookie_auth():
             return {
                 "success": True,
                 "user_id": self.current_user.id,
@@ -41,10 +47,10 @@ class VRChatAPI:
                 "method": "cookie"
             }
         
-        # Fall back to username/password auth
-        return self._authenticate_with_credentials()
+        # Fall back to username/password auth with OTP
+        return await self._authenticate_with_credentials()
     
-    def _try_cookie_auth(self):
+    async def _try_cookie_auth(self):
         """Try to authenticate using saved cookies"""
         logger.info("Attempting cookie authentication")
         
@@ -169,7 +175,7 @@ class VRChatAPI:
             logger.error(f"Failed to save cookies: {str(e)}")
             return False
     
-    def _authenticate_with_credentials(self):
+    async def _authenticate_with_credentials(self):
         """Authenticate with username and password"""
         # Create configuration with credentials
         configuration = vrchatapi.Configuration(
@@ -184,7 +190,7 @@ class VRChatAPI:
         self.api_client.user_agent = "VRChatAnnounceBotPython/1.0.0 mail@sayonara-natsu.com"
         
         # Try to authenticate
-        result = self._authenticate()
+        result = await self._authenticate()
         
         # Save cookies if authentication was successful
         if result.get('success') and self.authenticated:
@@ -192,7 +198,7 @@ class VRChatAPI:
             
         return result
     
-    def _authenticate(self):
+    async def _authenticate(self):
         """Internal method to authenticate with VRChat - interactive for 2FA"""
         if not self.api_client:
             return {"success": False, "error": "API client not initialized"}
@@ -222,14 +228,17 @@ class VRChatAPI:
                 # Handle 2FA if needed
                 if e.status == 200:
                     if "Email 2 Factor Authentication" in e.reason:
-                        # Interactive email 2FA
-                        print("\n==== Email 2FA Required ====")
-                        print("Please check your email for a verification code")
-                        email_code = input("Enter your email verification code: ")
-                        
+                        # Request OTP through callback
+                        if not self.otp_callback:
+                            return {"success": False, "error": "OTP callback not set"}
+                            
+                        otp = await self.otp_callback("Email 2FA")
+                        if not otp:
+                            return {"success": False, "error": "No OTP provided"}
+                            
                         try:
                             auth_api.verify2_fa_email_code(
-                                two_factor_email_code=TwoFactorEmailCode(code=email_code)
+                                two_factor_email_code=TwoFactorEmailCode(code=otp)
                             )
                             logger.info("Email 2FA verified successfully")
                         except Exception as e2:
@@ -237,14 +246,17 @@ class VRChatAPI:
                             return {"success": False, "error": f"Email 2FA failed: {str(e2)}"}
                             
                     elif "2 Factor Authentication" in e.reason:
-                        # Interactive TOTP 2FA
-                        print("\n==== TOTP 2FA Required ====")
-                        print("Please open your authenticator app")
-                        totp_code = input("Enter your authenticator code: ")
-                        
+                        # Request OTP through callback
+                        if not self.otp_callback:
+                            return {"success": False, "error": "OTP callback not set"}
+                            
+                        otp = await self.otp_callback("TOTP 2FA")
+                        if not otp:
+                            return {"success": False, "error": "No OTP provided"}
+                            
                         try:
                             auth_api.verify2_fa(
-                                two_factor_auth_code=TwoFactorAuthCode(code=totp_code)
+                                two_factor_auth_code=TwoFactorAuthCode(code=otp)
                             )
                             logger.info("TOTP 2FA verified successfully")
                         except Exception as e2:
@@ -277,12 +289,11 @@ class VRChatAPI:
             logger.error(f"Unexpected error during authentication: {str(e)}")
             return {"success": False, "error": f"Unexpected error: {str(e)}"}
     
-    def authenticate(self):
+    async def authenticate(self):
         """Public method to authenticate or re-authenticate"""
-        return self._authenticate()
-        
-
-    def post_announcement(self, title, content):
+        return await self._authenticate()
+    
+    async def post_announcement(self, title, content):
         """Post in the group with notification"""
         if not self.authenticated or not self.api_client:
             return {"success": False, "error": "Not authenticated"}
@@ -306,11 +317,33 @@ class VRChatAPI:
                 "success": True,
                 "group_post": group_post
             }
+        except UnauthorizedException as e:
+            logger.error(f"Authentication error posting announcement: {e}")
+            # Add to failed posts for retry
+            self.failed_posts.append({
+                "title": title,
+                "content": content
+            })
+            return {"success": False, "error": "Authentication failed, will retry after reauth"}
         except Exception as e:
             logger.error(f"Error posting announcement: {e}")
             return {"success": False, "error": str(e)}
     
-    def delete_post(self, notification_id):
+    async def retry_failed_posts(self):
+        """Retry all failed posts"""
+        if not self.failed_posts:
+            return []
+            
+        results = []
+        for post in self.failed_posts:
+            result = await self.post_announcement(post["title"], post["content"])
+            results.append(result)
+            
+        # Clear failed posts after retry
+        self.failed_posts = []
+        return results
+    
+    async def delete_post(self, notification_id):
         """Delete a post"""
         if not self.authenticated or not self.api_client:
             return {"success": False, "error": "Not authenticated"}

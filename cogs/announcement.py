@@ -2,6 +2,8 @@ import logging
 import discord
 from discord.ext import commands
 from discord import app_commands
+import asyncio
+import uuid
 
 logger = logging.getLogger(__name__)
 
@@ -17,12 +19,68 @@ class AnnouncementCog(commands.Cog):
         self.approval_emoji = config['discord'].get('approval_reaction_emoji', "👍")
         self.pending_requests = {}  # Store message IDs and their scheduled message IDs
         self.queued_announcements = set()  # Store message IDs that have been queued
+        self.otp_requests = {}  # Store OTP requests and their futures
         
+        # Set up OTP callback for VRChat API
+        self.scheduler.vrchat_api.set_otp_callback(self._request_otp)
+        
+    async def _request_otp(self, otp_type):
+        """Request OTP from admin through Discord"""
+        # Get the first channel from config
+        channel = self.bot.get_channel(self.channel_ids[0])
+        if not channel:
+            logger.error("Could not find channel for OTP request")
+            return None
+            
+        # Create a unique request ID
+        request_id = str(uuid.uuid4())
+        
+        # Create a future to wait for the response
+        future = asyncio.Future()
+        self.otp_requests[request_id] = future
+        
+        # Send OTP request message
+        role_mention = f"<@&{self.admin_role_id}>"
+        message = await channel.send(
+            f"{role_mention} VRChatの認証に{otp_type}が必要です。"
+            f"認証コードを入力してください。"
+        )
+        
+        try:
+            # Wait for response with timeout
+            otp = await asyncio.wait_for(future, timeout=300)  # 5 minute timeout
+            return otp
+        except asyncio.TimeoutError:
+            await message.edit(content=f"{role_mention} OTPリクエストがタイムアウトしました。")
+            return None
+        finally:
+            # Clean up
+            if request_id in self.otp_requests:
+                del self.otp_requests[request_id]
+    
     @commands.Cog.listener()
     async def on_message(self, message):
         """Process messages in the announcement channels"""
-        # Ignore own messages and messages from non-monitored channels
-        if message.author.bot or message.channel.id not in self.channel_ids:
+        # Check for OTP response
+        if message.author.bot:
+            return
+            
+        # Check if this is an OTP response
+        if message.channel.id in self.channel_ids:
+            # Check if the user has admin role
+            member = await message.guild.fetch_member(message.author.id)
+            if member and self.admin_role_id in [role.id for role in member.roles]:
+                # Check if this is a response to an OTP request
+                for request_id, future in list(self.otp_requests.items()):
+                    if not future.done():
+                        # Set the OTP value
+                        future.set_result(message.content.strip())
+                        # Delete the message for security
+                        await message.delete()
+                        return
+        
+        # Ignore messages from non-monitored channels
+        if message.channel.id not in self.channel_ids:
             return
         
         # Check if message mentions the bot and is an announcement request
