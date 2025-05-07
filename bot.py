@@ -45,23 +45,46 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 class VRChatAnnounceBot(commands.Bot):
-    def __init__(self, config):
+    def __init__(self, config, args):
         intents = discord.Intents.default()
         intents.message_content = True
         intents.reactions = True
         
         super().__init__(
             command_prefix=config['discord']['prefix'],
-            intents=intents
+            intents=intents,
+            help_command=None  # Disable default help command
         )
         
         self.config = config
+        self.args = args
         self.otp_requests = {}  # Store OTP requests and their futures
         
+        # Add sensitive environment variables to config
+        self._load_env_variables()
+        
         # Initialize components
-        self.vrchat_api = VRChatAPI(config['vrchat'])
+        self.vrchat_api = VRChatAPI(self.config['vrchat'])
         self.scheduler = Scheduler(self.vrchat_api)
-        self.ai_processor = AIProcessor(config['openrouter'])
+        self.ai_processor = AIProcessor(self.config['openrouter'])
+        
+    def _load_env_variables(self):
+        """Load sensitive data from environment variables into config"""
+        # Discord
+        self.config['discord']['token'] = os.getenv('DISCORD_TOKEN')
+        
+        # OpenRouter - only load the API key, keep model in config
+        if 'openrouter' not in self.config:
+            self.config['openrouter'] = {}
+        self.config['openrouter']['api_key'] = os.getenv('OPENROUTER_API_KEY')
+        # Model remains in config.yaml
+        
+        # VRChat
+        if 'vrchat' not in self.config:
+            self.config['vrchat'] = {}
+        self.config['vrchat']['username'] = os.getenv('VRCHAT_USERNAME')
+        self.config['vrchat']['password'] = os.getenv('VRCHAT_PASSWORD')
+        # group_id is now loaded from config.yaml
         
     async def setup_hook(self):
         """Set up the bot's components"""
@@ -69,13 +92,7 @@ class VRChatAnnounceBot(commands.Bot):
             # Set up OTP callback before initializing VRChat API
             self.vrchat_api.set_otp_callback(self._request_otp)
             
-            # Initialize VRChat API
-            auth_result = await self.vrchat_api.initialize()
-            if not auth_result.get('success', False):
-                logger.error(f"Failed to initialize VRChat API: {auth_result.get('error', 'Unknown error')}")
-                return
-            
-            # Add cogs
+            # Add cogs first
             await self.add_cog(AnnouncementCog(self, self.config, self.ai_processor, self.scheduler))
             await self.add_cog(AdminCog(self, self.config, self.scheduler))
             
@@ -83,6 +100,31 @@ class VRChatAnnounceBot(commands.Bot):
             
         except Exception as e:
             logger.error(f"Error during bot setup: {e}")
+            logger.error(f"Stack trace:\n{traceback.format_exc()}")
+    
+    async def on_ready(self):
+        """Called when the bot is ready and connected to Discord"""
+        try:
+            logger.info(f"Bot is ready! Logged in as {self.user}")
+            
+            # Initialize VRChat API after bot is ready
+            auth_result = await self.vrchat_api.initialize()
+            if not auth_result.get('success', False):
+                error_msg = auth_result.get('error', 'Unknown error')
+                logger.error(f"Failed to initialize VRChat API: {error_msg}")
+                
+                # If it's an avatar error, we can still proceed
+                if "current_avatar_asset_url" in error_msg:
+                    logger.warning("Avatar error detected, but continuing with limited functionality")
+                    return
+                    
+                # For other errors, we should stop
+                return
+                
+            logger.info("VRChat API initialized successfully")
+            
+        except Exception as e:
+            logger.error(f"Error during VRChat API initialization: {e}")
             logger.error(f"Stack trace:\n{traceback.format_exc()}")
     
     async def _request_otp(self, otp_type):
@@ -143,14 +185,27 @@ class VRChatAnnounceBot(commands.Bot):
         await self.process_commands(message)
 
 async def main():
+    # Parse command-line arguments
+    args = parse_arguments()
+    
+    # Load environment from specified file
+    load_environment(args.env)
+    
     # Load configuration
-    with open('config.yaml', 'r') as f:
-        config = yaml.safe_load(f)
+    try:
+        with open('config.yaml', 'r', encoding='utf-8') as f:
+            config = yaml.safe_load(f)
+    except Exception as e:
+        logger.error(f"Failed to load config: {e}")
+        return
     
     # Create and start the bot
-    bot = VRChatAnnounceBot(config)
+    bot = VRChatAnnounceBot(config, args)
     try:
-        await bot.start(config['discord']['token'])
+        if not bot.config['discord']['token']:
+            logger.error("Discord token not found in environment variables!")
+            return
+        await bot.start(bot.config['discord']['token'])
     except Exception as e:
         logger.error(f"Error starting bot: {e}")
         logger.error(f"Stack trace:\n{traceback.format_exc()}")
