@@ -177,9 +177,10 @@ class VRChatAnnounceBot(commands.Bot):
                         await message.delete()
                         return
         
-        # Only process commands if the bot is mentioned
-        if self.user in message.mentions:
-            await self.process_commands(message)
+        # Process all commands regardless of mentions
+        # This allows admin commands like !list and !cancel to work without a mention
+        # Note: Announcement requests still require a mention as that's handled in AnnouncementCog
+        await self.process_commands(message)
 
 async def main():
     # Parse command-line arguments
@@ -212,4 +213,4 @@ async def main():
             bot.vrchat_api.close()
 
 if __name__ == "__main__":
-    asyncio.run(main()) 
+    asyncio.run(main())
