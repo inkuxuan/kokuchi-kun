@@ -18,6 +18,7 @@ class AnnouncementCog(commands.Cog):
         self.admin_role_id = config['discord']['admin_role_id']
         self.seen_emoji = config['discord'].get('seen_reaction_emoji', "👀")
         self.approval_emoji = config['discord'].get('approval_reaction_emoji', "👍")
+        self.fast_forward_emoji = config['discord'].get('fast_forward_emoji', "⏩")
         self.pending_requests = {}  # Store message IDs and their scheduled message IDs
         self.queued_announcements = set()  # Store message IDs that have been queued
         self.otp_requests = {}  # Store OTP requests and their futures
@@ -109,37 +110,61 @@ class AnnouncementCog(commands.Cog):
         if payload.user_id == self.bot.user.id:
             return
             
-        # Check if this is a pending request
-        if str(payload.message_id) not in self.pending_requests:
-            return
-            
         # Check if the channel is correct
         if payload.channel_id not in self.channel_ids:
-            return
-            
-        # Check for approval reaction and admin role
-        if str(payload.emoji) != self.approval_emoji:
             return
             
         channel = self.bot.get_channel(payload.channel_id)
         if not channel:
             return
             
-        message = await channel.fetch_message(payload.message_id)
-        if not message:
+        # Get member to check roles
+        try:
+            member = await channel.guild.fetch_member(payload.user_id)
+        except:
             return
+
+        # Case 1: Approval of pending request (Reaction to User's message)
+        if str(payload.message_id) in self.pending_requests:
+            # Check for approval reaction and admin role
+            if str(payload.emoji) == self.approval_emoji:
+                if not member or self.admin_role_id not in [role.id for role in member.roles]:
+                    return
+
+                message = await channel.fetch_message(payload.message_id)
+                if not message:
+                    return
+
+                # Check if this message has already been queued
+                if str(message.id) in self.queued_announcements:
+                    return
+
+                # Process the approved announcement
+                await self._process_approved_announcement(message)
+                return
+
+        # Case 2: Immediate posting of queued announcement (Reaction to Bot's message)
+        if str(payload.emoji) == self.fast_forward_emoji:
+            # Find the original request ID based on the bot's message ID (queued message)
+            request_msg_id = None
+            for req_id, queued_msg_id in self.pending_requests.items():
+                if queued_msg_id == str(payload.message_id):
+                    request_msg_id = req_id
+                    break
             
-        # Check if the user has admin role
-        member = await message.guild.fetch_member(payload.user_id)
-        if not member or self.admin_role_id not in [role.id for role in member.roles]:
-            return
-            
-        # Check if this message has already been queued
-        if str(message.id) in self.queued_announcements:
-            return
-            
-        # Process the approved announcement
-        await self._process_approved_announcement(message)
+            if request_msg_id:
+                # Get the original request message to check author
+                try:
+                    request_message = await channel.fetch_message(int(request_msg_id))
+
+                    # Check permissions: Admin or Original Author
+                    is_admin = member and self.admin_role_id in [role.id for role in member.roles]
+                    is_author = request_message.author.id == payload.user_id
+
+                    if is_admin or is_author:
+                        await self._process_immediate_post(request_msg_id, payload.channel_id, payload.message_id)
+                except Exception as e:
+                    logger.error(f"Error handling immediate post request: {e}")
     
     @commands.Cog.listener()
     async def on_raw_reaction_remove(self, payload):
@@ -187,6 +212,47 @@ class AnnouncementCog(commands.Cog):
                 self.pending_requests[str(message.id)] = None
                 
                 await message.reply(Messages.Discord.BOOKING_CANCELLED)
+
+    async def _process_immediate_post(self, request_msg_id, channel_id, processing_msg_id):
+        """Process an immediate post request"""
+        # Get job details
+        job = self.scheduler.get_job_by_message_id(request_msg_id)
+        if not job:
+            return
+
+        channel = self.bot.get_channel(channel_id)
+        if not channel:
+            return
+
+        processing_msg = await channel.fetch_message(processing_msg_id)
+
+        # Cancel the scheduled job
+        self.scheduler.cancel_job(job['id'])
+
+        # Post immediately
+        try:
+            result = await self.scheduler.vrchat_api.post_announcement(job['title'], job['content'])
+
+            if result['success']:
+                # Update embed to show success
+                embed = processing_msg.embeds[0]
+                embed.color = discord.Color.gold()
+                embed.title = Messages.Discord.IMMEDIATE_POST_SUCCESS
+                embed.description = Messages.Discord.IMMEDIATE_POST_EXECUTED
+                # Remove timestamp field if needed, or update it
+                # For now just updating title and color
+
+                await processing_msg.edit(embed=embed)
+
+                # Clean up tracking
+                self.queued_announcements.remove(str(request_msg_id))
+                # We keep pending_requests as it maps to the processing msg which still exists
+            else:
+                await channel.send(Messages.Discord.IMMEDIATE_POST_FAIL.format(result['error']))
+
+        except Exception as e:
+            logger.error(f"Error in immediate post: {e}")
+            await channel.send(Messages.Discord.IMMEDIATE_POST_FAIL.format(str(e)))
     
     async def _process_approved_announcement(self, message):
         """Process an approved announcement request"""
