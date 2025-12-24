@@ -111,6 +111,13 @@ class Scheduler:
             if job['message_id'] == message_id:
                 return self.cancel_job(job_id)
         return False
+
+    def get_job_by_message_id(self, message_id):
+        """Get a scheduled job by message ID"""
+        for job in self.jobs.values():
+            if job['message_id'] == message_id:
+                return job
+        return None
     
     def shutdown(self):
         """Shutdown the scheduler"""

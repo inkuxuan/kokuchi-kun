@@ -85,6 +85,9 @@ class Messages:
         FIELD_CONTENT = "内容"
         FIELD_JOB_ID = "ジョブID"
         PROCESSING_ERROR = "告知の処理中にエラーが発生しました: {}"
+        IMMEDIATE_POST_SUCCESS = "告知を即時投稿しました"
+        IMMEDIATE_POST_FAIL = "即時投稿に失敗しました: {}"
+        IMMEDIATE_POST_EXECUTED = "この告知は即時投稿されました。"
 
         # Admin Cog
         NO_SCHEDULED_JOBS = "予約されている告知はありません。"
