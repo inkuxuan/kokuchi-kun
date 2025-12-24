@@ -8,6 +8,7 @@ from vrchatapi.api.groups_api import GroupsApi
 from vrchatapi.exceptions import UnauthorizedException, ApiException
 from vrchatapi.models.two_factor_auth_code import TwoFactorAuthCode
 from vrchatapi.models.two_factor_email_code import TwoFactorEmailCode
+from utils.messages import Messages
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -52,11 +53,11 @@ class VRChatAPI:
     
     async def _try_cookie_auth(self):
         """Try to authenticate using saved cookies"""
-        logger.info("Attempting cookie authentication")
+        logger.info(Messages.Log.COOKIE_AUTH_ATTEMPT)
         
         try:
             if not os.path.exists(self.cookie_file):
-                logger.warning("No saved session found")
+                logger.warning(Messages.Log.NO_SESSION_FILE)
                 return False
                 
             with open(self.cookie_file, 'r') as f:
@@ -66,7 +67,7 @@ class VRChatAPI:
             two_factor_cookie = cookie_data.get('twoFactorAuthCookie')
             
             if not auth_cookie:
-                logger.warning("No auth cookie found in saved session")
+                logger.warning(Messages.Log.NO_AUTH_COOKIE)
                 return False
                 
             # Create a basic configuration
@@ -74,7 +75,7 @@ class VRChatAPI:
             
             # Create a new API client
             self.api_client = vrchatapi.ApiClient(configuration)
-            self.api_client.user_agent = "VRChatAnnounceBotPython/1.0.0 mail@sayonara-natsu.com"
+            self.api_client.user_agent = Messages.Const.VRC_USER_AGENT
             
             # Create and set cookies directly in the cookie jar
             from http.cookiejar import Cookie
@@ -117,17 +118,17 @@ class VRChatAPI:
                 self.current_user = auth_api.get_current_user()
                 self.authenticated = True
                 
-                logger.info(f"Successfully authenticated with saved cookie as {self.current_user.display_name}")
+                logger.info(Messages.Log.COOKIE_AUTH_SUCCESS.format(self.current_user.display_name))
                 return True
             except UnauthorizedException as e:
-                logger.warning(f"Cookie authentication failed - unauthorized: {e.reason}")
+                logger.warning(Messages.Log.COOKIE_AUTH_FAIL_UNAUTH.format(e.reason))
                 return False
             except ApiException as e:
-                logger.warning(f"Cookie authentication failed - API error: {str(e)}")
+                logger.warning(Messages.Log.COOKIE_AUTH_FAIL_API.format(str(e)))
                 return False
             
         except Exception as e:
-            logger.warning(f"Cookie authentication failed: {str(e)}")
+            logger.warning(Messages.Log.COOKIE_AUTH_FAIL.format(str(e)))
             # Clean up if cookie auth failed
             if self.api_client:
                 self.api_client.close()
@@ -161,18 +162,18 @@ class VRChatAPI:
             
             # Verify we have the auth cookie before saving
             if 'authCookie' not in cookies:
-                logger.warning("No auth cookie found to save")
+                logger.warning(Messages.Log.NO_AUTH_COOKIE_SAVE)
                 return False
                 
             # Save to file
             with open(self.cookie_file, 'w') as f:
                 json.dump(cookies, f)
                 
-            logger.info(f"VRChat session cookies saved to {self.cookie_file}")
+            logger.info(Messages.Log.COOKIES_SAVED.format(self.cookie_file))
             return True
             
         except Exception as e:
-            logger.error(f"Failed to save cookies: {str(e)}")
+            logger.error(Messages.Log.COOKIE_SAVE_FAIL.format(str(e)))
             return False
     
     async def _authenticate_with_credentials(self):
@@ -187,7 +188,7 @@ class VRChatAPI:
         self.api_client = vrchatapi.ApiClient(configuration)
         
         # Set User-Agent as required by VRChat
-        self.api_client.user_agent = "VRChatAnnounceBotPython/1.0.0 mail@sayonara-natsu.com"
+        self.api_client.user_agent = Messages.Const.VRC_USER_AGENT
         
         # Try to authenticate
         result = await self._authenticate()
@@ -201,7 +202,7 @@ class VRChatAPI:
     async def _authenticate(self):
         """Internal method to authenticate with VRChat - interactive for 2FA"""
         if not self.api_client:
-            return {"success": False, "error": "API client not initialized"}
+            return {"success": False, "error": Messages.Error.API_CLIENT_NOT_INIT}
         
         try:
             # Create auth API instance
@@ -212,7 +213,7 @@ class VRChatAPI:
                 self.current_user = auth_api.get_current_user()
                 self.authenticated = True
                 
-                logger.info(f"Authenticated as {self.current_user.display_name}")
+                logger.info(Messages.Log.AUTH_SUCCESS.format(self.current_user.display_name))
                 
                 # Save cookies after successful authentication
                 self._save_cookies()
@@ -230,64 +231,64 @@ class VRChatAPI:
                     if "Email 2 Factor Authentication" in e.reason:
                         # Request OTP through callback
                         if not self.otp_callback:
-                            return {"success": False, "error": "OTP callback not set"}
+                            return {"success": False, "error": Messages.Error.OTP_CALLBACK_NOT_SET}
                             
                         otp = await self.otp_callback("Email 2FA")
                         if not otp:
-                            return {"success": False, "error": "No OTP provided"}
+                            return {"success": False, "error": Messages.Error.NO_OTP_PROVIDED}
                             
                         try:
                             auth_api.verify2_fa_email_code(
                                 two_factor_email_code=TwoFactorEmailCode(code=otp)
                             )
-                            logger.info("Email 2FA verified successfully")
+                            logger.info(Messages.Log.EMAIL_2FA_SUCCESS)
                         except Exception as e2:
-                            logger.error(f"Email 2FA failed: {str(e2)}")
-                            return {"success": False, "error": f"Email 2FA failed: {str(e2)}"}
+                            logger.error(Messages.Log.EMAIL_2FA_FAIL.format(str(e2)))
+                            return {"success": False, "error": Messages.Error.EMAIL_2FA_FAIL.format(str(e2))}
                             
                     elif "2 Factor Authentication" in e.reason:
                         # Request OTP through callback
                         if not self.otp_callback:
-                            return {"success": False, "error": "OTP callback not set"}
+                            return {"success": False, "error": Messages.Error.OTP_CALLBACK_NOT_SET}
                             
                         otp = await self.otp_callback("TOTP 2FA")
                         if not otp:
-                            return {"success": False, "error": "No OTP provided"}
+                            return {"success": False, "error": Messages.Error.NO_OTP_PROVIDED}
                             
                         try:
                             auth_api.verify2_fa(
                                 two_factor_auth_code=TwoFactorAuthCode(code=otp)
                             )
-                            logger.info("TOTP 2FA verified successfully")
+                            logger.info(Messages.Log.TOTP_2FA_SUCCESS)
                         except Exception as e2:
-                            logger.error(f"TOTP 2FA failed: {str(e2)}")
-                            return {"success": False, "error": f"TOTP 2FA failed: {str(e2)}"}
+                            logger.error(Messages.Log.TOTP_2FA_FAIL.format(str(e2)))
+                            return {"success": False, "error": Messages.Error.TOTP_2FA_FAIL.format(str(e2))}
                     
                     # Try again after 2FA
                     try:
                         self.current_user = auth_api.get_current_user()
                         self.authenticated = True
                         
-                        logger.info(f"Authenticated with 2FA as {self.current_user.display_name}")
+                        logger.info(Messages.Log.AUTH_2FA_SUCCESS.format(self.current_user.display_name))
                         return {
                             "success": True,
                             "user_id": self.current_user.id,
                             "display_name": self.current_user.display_name
                         }
                     except ApiException as e2:
-                        logger.error(f"Error after 2FA: {str(e2)}")
-                        return {"success": False, "error": f"Authentication failed after 2FA: {str(e2)}"}
+                        logger.error(Messages.Log.ERROR_AFTER_2FA.format(str(e2)))
+                        return {"success": False, "error": Messages.Error.AUTH_FAIL_AFTER_2FA.format(str(e2))}
                 else:
-                    logger.error(f"Authentication error: {e.reason}")
-                    return {"success": False, "error": f"Authentication failed: {e.reason}"}
+                    logger.error(Messages.Log.AUTH_ERROR.format(e.reason))
+                    return {"success": False, "error": Messages.Error.AUTH_FAIL.format(e.reason)}
                     
             except ApiException as e:
-                logger.error(f"API error during authentication: {str(e)}")
-                return {"success": False, "error": f"API error: {str(e)}"}
+                logger.error(Messages.Log.AUTH_API_ERROR.format(str(e)))
+                return {"success": False, "error": Messages.Error.API_ERROR.format(str(e))}
                 
         except Exception as e:
-            logger.error(f"Unexpected error during authentication: {str(e)}")
-            return {"success": False, "error": f"Unexpected error: {str(e)}"}
+            logger.error(Messages.Log.AUTH_UNEXPECTED_ERROR.format(str(e)))
+            return {"success": False, "error": Messages.Error.UNEXPECTED_ERROR.format(str(e))}
     
     async def authenticate(self):
         """Public method to authenticate or re-authenticate"""
@@ -296,14 +297,14 @@ class VRChatAPI:
     async def post_announcement(self, title, content):
         """Post in the group with notification"""
         if not self.authenticated or not self.api_client:
-            return {"success": False, "error": "Not authenticated"}
+            return {"success": False, "error": Messages.Error.NOT_AUTHENTICATED}
         
         try:
             # Create groups API instance
             groups_api = GroupsApi(self.api_client)
             
             # Create a post with notification
-            logger.info(f"Posting to group {self.group_id}")
+            logger.info(Messages.Log.POST_GROUP.format(self.group_id))
             group_post = groups_api.add_group_post(
                 group_id=self.group_id,
                 create_group_post_request={
@@ -318,15 +319,15 @@ class VRChatAPI:
                 "group_post": group_post
             }
         except UnauthorizedException as e:
-            logger.error(f"Authentication error posting announcement: {e}")
+            logger.error(Messages.Log.POST_AUTH_ERROR.format(e))
             # Add to failed posts for retry
             self.failed_posts.append({
                 "title": title,
                 "content": content
             })
-            return {"success": False, "error": "Authentication failed, will retry after reauth"}
+            return {"success": False, "error": Messages.Error.AUTH_FAIL_RETRY}
         except Exception as e:
-            logger.error(f"Error posting announcement: {e}")
+            logger.error(Messages.Log.POST_ERROR.format(e))
             return {"success": False, "error": str(e)}
     
     async def retry_failed_posts(self):
@@ -346,7 +347,7 @@ class VRChatAPI:
     async def delete_post(self, notification_id):
         """Delete a post"""
         if not self.authenticated or not self.api_client:
-            return {"success": False, "error": "Not authenticated"}
+            return {"success": False, "error": Messages.Error.NOT_AUTHENTICATED}
         
         try:
             # Create groups API instance
@@ -363,7 +364,7 @@ class VRChatAPI:
                 "message": "Post deleted successfully"
             }
         except Exception as e:  
-            logger.error(f"Error deleting post: {e}")
+            logger.error(Messages.Log.DELETE_POST_ERROR.format(e))
             return {"success": False, "error": str(e)}
     
     def close(self):
