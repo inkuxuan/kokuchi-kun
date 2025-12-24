@@ -11,6 +11,7 @@ class AIProcessor:
     def __init__(self, config):
         self.api_key = config['api_key']
         self.model = config['model']
+        self.prompt = config['prompt']
         openai.api_key = self.api_key
         openai.api_base = "https://openrouter.ai/api/v1"
         
@@ -20,27 +21,7 @@ class AIProcessor:
             logger.info("Processing announcement with AI")
             
             # Prepare the prompt
-            prompt = f"""
-以下のDiscordメッセージから告知情報を抽出してください：
-1. 告知予定の日時（日本時間）
-2. 告知のタイトル
-3. 告知の内容
-
-注意事項：
-1. メッセージの最後に「よろしくお願いします」などが含まれる場合は、内容には含めない
-
-======メッセージ:======
-{message_content}
-======メッセージ終了======
-
-結果は以下のJSONフォーマットのみで返してください。マークダウンや説明は不要です：
-{{
-  "date": "YYYY-MM-DD",
-  "time": "HH:MM",
-  "title": "タイトル",
-  "content": "内容"
-}}
-            """
+            prompt = self.prompt.replace("__message_content__", message_content)
             
             # Call OpenRouter API
             headers = {

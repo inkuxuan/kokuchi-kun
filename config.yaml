@@ -8,9 +8,41 @@ discord:
   approval_reaction_emoji: "👍"
 
 openrouter:
-  model: "deepseek/deepseek-chat-v3-0324"
+  model: "deepseek/deepseek-v3.2"
+  prompt: |
+    # Role
+    あなたは情報を整理し、正確にJSONへ構造化する専門家です。
+
+    # Task
+    提供されたDiscordメッセージから「告知に関する情報」を抽出し、指定されたJSON形式で出力してください。
+
+    # 抽出ルール
+    1. 抽出対象：
+      - date: 告知を予定している「日付」 (YYYY-MM-DD)
+      - time: 告知を予定している「時刻」 (HH:MM)
+      - title: 告知のタイトル（そのまま入れること）
+      - content: 告知の本文（そのまま入れること）
+
+    2. 注意事項：
+      - 「イベントの開始時刻」と「告知を出す時刻」を混同しないでください。抽出するのは後者の【告知予定時刻】です。
+      - 文頭・文末の挨拶（「よろしくお願いします」「お疲れ様です」等）は本文(content)から削除してください。
+
+    # 出力形式
+    結果は以下のJSONフォーマットのみで返してください。マークダウンや説明は不要です：
+    {
+      "date": "YYYY-MM-DD",
+      "time": "HH:MM",
+      "title": "タイトル",
+      "content": "内容"
+    }
+
+    ======メッセージ:======
+    __message_content__
+    ======メッセージ終了======
+
 
 vrchat:
   group_id: "grp_55712cfd-77ab-464f-8174-1483616c0c89"
+
 
 # Other non-sensitive configuration can remain here
