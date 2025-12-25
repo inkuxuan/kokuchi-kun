@@ -382,6 +382,7 @@ class AnnouncementCog(commands.Cog):
                 content = content[:1021] + "..."
             embed.add_field(name=Messages.Discord.FIELD_CONTENT, value=content, inline=False)
             embed.add_field(name=Messages.Discord.FIELD_JOB_ID, value=job_id, inline=False)
+            embed.add_field(name=Messages.Discord.FIELD_HINTS, value=Messages.Discord.FIELD_HINTS_CONTENTS, inline=False)
             
             # Update the processing message with the final result
             await processing_msg.edit(content=None, embed=embed)
