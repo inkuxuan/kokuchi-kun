@@ -6,6 +6,7 @@ discord:
   admin_role_id: 1320711513698472008
   seen_reaction_emoji: "👀"
   approval_reaction_emoji: "👍"
+  fast_forward_emoji: "⏩"
 
 openrouter:
   model: "deepseek/deepseek-v3.2"
