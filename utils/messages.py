@@ -72,6 +72,8 @@ class Messages:
         OTP_REQUEST = "{role_mention} VRChatの認証に{otp_type}が必要です。認証コードを入力してください。"
         OTP_REQUEST_EDITED = "VRChatの認証に{otp_type}が必要です。認証コードを入力してください。"
         OTP_TIMEOUT = "{role_mention} OTPリクエストがタイムアウトしました。"
+        BOT_ONLINE = "Bot is online! 🟢"
+        LOGGED_IN = "Logged into VRChat as {} ✅"
 
         # Announcement Cog
         ALREADY_BOOKED = "この告知は既に予約されています。"
@@ -88,6 +90,8 @@ class Messages:
         IMMEDIATE_POST_SUCCESS = "告知を即時投稿しました"
         IMMEDIATE_POST_FAIL = "即時投稿に失敗しました: {}"
         IMMEDIATE_POST_EXECUTED = "この告知は即時投稿されました。"
+        RESTORATION_STATS = "{} pending, {} booked announcements restored"
+        SKIPPED_JOBS = "⚠️ Skipped {} announcements that were scheduled while offline:\n{}"
 
         # Admin Cog
         NO_SCHEDULED_JOBS = "予約されている告知はありません。"
