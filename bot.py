@@ -111,7 +111,7 @@ class VRChatAnnounceBot(commands.Bot):
             # Send online message
             channel = self.get_channel(self.config['discord']['channel_ids'][0])
             if channel:
-                await channel.send("Bot is online! 🟢")
+                await channel.send(Messages.Discord.BOT_ONLINE)
 
             # Initialize VRChat API after bot is ready
             auth_result = await self.vrchat_api.initialize()
@@ -123,7 +123,7 @@ class VRChatAnnounceBot(commands.Bot):
             logger.info(Messages.Log.VRC_API_INIT_SUCCESS)
             if channel:
                 display_name = auth_result.get('display_name', 'Unknown')
-                await channel.send(f"Logged into VRChat as {display_name} ✅")
+                await channel.send(Messages.Discord.LOGGED_IN.format(display_name))
             
         except Exception as e:
             logger.error(Messages.Log.VRC_API_INIT_ERROR.format(e))
