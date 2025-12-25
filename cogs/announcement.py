@@ -5,6 +5,7 @@ from discord import app_commands
 import asyncio
 import uuid
 from utils.messages import Messages
+from utils.persistence import Persistence
 
 logger = logging.getLogger(__name__)
 
@@ -21,11 +22,84 @@ class AnnouncementCog(commands.Cog):
         self.fast_forward_emoji = config['discord'].get('fast_forward_emoji', "⏩")
         self.pending_requests = {}  # Store message IDs and their scheduled message IDs
         self.queued_announcements = set()  # Store message IDs that have been queued
+        self.history = [] # List of completed message IDs (limit 1000)
         self.otp_requests = {}  # Store OTP requests and their futures
+        self.persistence = Persistence()
         
         # Set up OTP callback for VRChat API
         self.scheduler.vrchat_api.set_otp_callback(self._request_otp)
         
+        # Set up job completion callback
+        self.scheduler.set_on_job_completion(self._on_job_complete)
+
+        # Load state will be called in on_ready
+
+    async def _on_job_complete(self, job_data):
+        """Callback for when a job completes successfully"""
+        try:
+            message_id = job_data.get('message_id')
+            if message_id:
+                # Add to history
+                if message_id not in self.history:
+                    self.history.append(message_id)
+                    # Limit history to 1000 items
+                    if len(self.history) > 1000:
+                        self.history = self.history[-1000:]
+
+                # Remove from queued list
+                if message_id in self.queued_announcements:
+                    self.queued_announcements.remove(message_id)
+
+                # Save state
+                self.save_state()
+                logger.info(f"Job completed and saved to history: {message_id}")
+        except Exception as e:
+            logger.error(f"Error in job completion callback: {e}")
+
+    def save_state(self):
+        """Save the current state to disk"""
+        self.persistence.save_data('pending.json', self.pending_requests)
+        self.persistence.save_data('history.json', self.history)
+        self.persistence.save_data('jobs.json', self.scheduler.get_jobs_data())
+
+    def load_state(self):
+        """Load state from disk"""
+        self.pending_requests = self.persistence.load_data('pending.json', {})
+        self.history = self.persistence.load_data('history.json', [])
+
+        jobs_data = self.persistence.load_data('jobs.json', [])
+        restored_count, skipped_jobs = self.scheduler.restore_jobs(jobs_data)
+
+        # Rebuild queued_announcements from restored jobs
+        self.queued_announcements = set()
+        for job in self.scheduler.list_jobs():
+            if 'message_id' in job:
+                self.queued_announcements.add(job['message_id'])
+
+        return restored_count, len(self.pending_requests), skipped_jobs
+
+    @commands.Cog.listener()
+    async def on_ready(self):
+        """Called when the bot is ready"""
+        try:
+            # Load state
+            restored_jobs, pending_count, skipped_jobs = self.load_state()
+
+            # Send restoration message
+            channel = self.bot.get_channel(self.channel_ids[0])
+            if channel:
+                msg = Messages.Discord.RESTORATION_STATS.format(pending_count, restored_jobs)
+                await channel.send(msg)
+
+                # Notify about skipped jobs
+                if skipped_jobs:
+                    skipped_titles = [f"- {job['title']}" for job in skipped_jobs]
+                    skipped_msg = Messages.Discord.SKIPPED_JOBS.format(len(skipped_jobs), "\n".join(skipped_titles))
+                    await channel.send(skipped_msg)
+
+        except Exception as e:
+            logger.error(f"Error during announcement cog initialization: {e}")
+
     async def _request_otp(self, otp_type):
         """Request OTP from admin through Discord"""
         # Get the first channel from config
@@ -89,13 +163,18 @@ class AnnouncementCog(commands.Cog):
     async def _handle_announcement_request(self, message):
         """Handle a new announcement request"""
         try:
-            # Check if this message has already been queued
+            # Check if this message has already been queued or sent
             if str(message.id) in self.queued_announcements:
+                await message.reply(Messages.Discord.ALREADY_BOOKED)
+                return
+
+            if str(message.id) in self.history:
                 await message.reply(Messages.Discord.ALREADY_BOOKED)
                 return
                 
             # Simply store the message ID and add reaction
             self.pending_requests[str(message.id)] = None  # Will store scheduled message ID later
+            self.save_state()
             await message.add_reaction(self.seen_emoji)
             await message.reply(Messages.Discord.REQUEST_CONFIRMED)
             
@@ -137,6 +216,10 @@ class AnnouncementCog(commands.Cog):
 
                 # Check if this message has already been queued
                 if str(message.id) in self.queued_announcements:
+                    return
+
+                # Check if this message has already been sent (history)
+                if str(message.id) in self.history:
                     return
 
                 # Process the approved announcement
@@ -208,9 +291,11 @@ class AnnouncementCog(commands.Cog):
                         logger.error(Messages.Log.SCHEDULED_MSG_DELETE_ERROR.format(e))
                 
                 # Clean up tracking - keep in pending_requests but clear scheduled message ID
-                self.queued_announcements.remove(str(message.id))
+                if str(message.id) in self.queued_announcements:
+                    self.queued_announcements.remove(str(message.id))
                 self.pending_requests[str(message.id)] = None
                 
+                self.save_state()
                 await message.reply(Messages.Discord.BOOKING_CANCELLED)
 
     async def _process_immediate_post(self, request_msg_id, channel_id, processing_msg_id):
@@ -245,7 +330,16 @@ class AnnouncementCog(commands.Cog):
                 await processing_msg.edit(embed=embed)
 
                 # Clean up tracking
-                self.queued_announcements.remove(str(request_msg_id))
+                if str(request_msg_id) in self.queued_announcements:
+                    self.queued_announcements.remove(str(request_msg_id))
+
+                # Add to history
+                if str(request_msg_id) not in self.history:
+                    self.history.append(str(request_msg_id))
+                    if len(self.history) > 1000:
+                        self.history = self.history[-1000:]
+
+                self.save_state()
                 # We keep pending_requests as it maps to the processing msg which still exists
             else:
                 await channel.send(Messages.Discord.IMMEDIATE_POST_FAIL.format(result['error']))
@@ -296,6 +390,8 @@ class AnnouncementCog(commands.Cog):
             self.pending_requests[str(message.id)] = str(processing_msg.id)
             self.queued_announcements.add(str(message.id))
             
+            self.save_state()
+
         except Exception as e:
             logger.error(Messages.Log.APPROVED_ANNOUNCEMENT_ERROR.format(e))
             if 'processing_msg' in locals():
