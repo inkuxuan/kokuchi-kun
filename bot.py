@@ -14,6 +14,7 @@ from utils.ai_processor import AIProcessor
 from utils.scheduler import Scheduler
 from cogs.announcement import AnnouncementCog
 from cogs.admin import AdminCog
+from utils.messages import Messages
 
 # Parse command-line arguments
 def parse_arguments():
@@ -25,11 +26,11 @@ def parse_arguments():
 # Load environment variables from specified file
 def load_environment(env_file):
     if os.path.exists(env_file):
-        logger.info(f"Loading environment from: {env_file}")
+        logger.info(Messages.Log.LOADING_ENV.format(env_file))
         load_dotenv(env_file)
         return True
     else:
-        logger.warning(f"Environment file not found: {env_file}, using default environment")
+        logger.warning(Messages.Log.ENV_NOT_FOUND.format(env_file))
         load_dotenv()
         return False
 
@@ -96,28 +97,28 @@ class VRChatAnnounceBot(commands.Bot):
             await self.add_cog(AnnouncementCog(self, self.config, self.ai_processor, self.scheduler))
             await self.add_cog(AdminCog(self, self.config, self.scheduler))
             
-            logger.info("Bot setup completed successfully")
+            logger.info(Messages.Log.BOT_SETUP_SUCCESS)
             
         except Exception as e:
-            logger.error(f"Error during bot setup: {e}")
+            logger.error(Messages.Log.BOT_SETUP_ERROR.format(e))
             logger.error(f"Stack trace:\n{traceback.format_exc()}")
     
     async def on_ready(self):
         """Called when the bot is ready and connected to Discord"""
         try:
-            logger.info(f"Bot is ready! Logged in as {self.user}")
+            logger.info(Messages.Log.BOT_READY.format(self.user))
             
             # Initialize VRChat API after bot is ready
             auth_result = await self.vrchat_api.initialize()
             if not auth_result.get('success', False):
                 error_msg = auth_result.get('error', 'Unknown error')
-                logger.error(f"Failed to initialize VRChat API: {error_msg}")
+                logger.error(Messages.Log.VRC_API_INIT_FAIL.format(error_msg))
                 return
                 
-            logger.info("VRChat API initialized successfully")
+            logger.info(Messages.Log.VRC_API_INIT_SUCCESS)
             
         except Exception as e:
-            logger.error(f"Error during VRChat API initialization: {e}")
+            logger.error(Messages.Log.VRC_API_INIT_ERROR.format(e))
             logger.error(f"Stack trace:\n{traceback.format_exc()}")
     
     async def _request_otp(self, otp_type):
@@ -125,7 +126,7 @@ class VRChatAnnounceBot(commands.Bot):
         # Get the first channel from config
         channel = self.get_channel(self.config['discord']['channel_ids'][0])
         if not channel:
-            logger.error("Could not find channel for OTP request")
+            logger.error(Messages.Log.OTP_CHANNEL_NOT_FOUND)
             return None
             
         # Create a unique request ID
@@ -137,20 +138,17 @@ class VRChatAnnounceBot(commands.Bot):
         
         # Send OTP request message with role mention
         role_mention = f"<@&{self.config['discord']['admin_role_id']}>"
-        message = await channel.send(
-            f"{role_mention} VRChatの認証に{otp_type}が必要です。"
-            f"認証コードを入力してください。"
-        )
+        message = await channel.send(Messages.Discord.OTP_REQUEST.format(role_mention=role_mention, otp_type=otp_type))
         
         try:
             # Wait for response with timeout
             otp = await asyncio.wait_for(future, timeout=300)  # 5 minute timeout
             if otp:
                 # Edit the original message to remove the mention
-                await message.edit(content=f"VRChatの認証に{otp_type}が必要です。認証コードを入力してください。")
+                await message.edit(content=Messages.Discord.OTP_REQUEST_EDITED.format(otp_type=otp_type))
             return otp
         except asyncio.TimeoutError:
-            await message.edit(content=f"{role_mention} OTPリクエストがタイムアウトしました。")
+            await message.edit(content=Messages.Discord.OTP_TIMEOUT.format(role_mention=role_mention))
             return None
         finally:
             # Clean up
@@ -194,18 +192,18 @@ async def main():
         with open('config.yaml', 'r', encoding='utf-8') as f:
             config = yaml.safe_load(f)
     except Exception as e:
-        logger.error(f"Failed to load config: {e}")
+        logger.error(Messages.Log.CONFIG_LOAD_FAIL.format(e))
         return
     
     # Create and start the bot
     bot = VRChatAnnounceBot(config, args)
     try:
         if not bot.config['discord']['token']:
-            logger.error("Discord token not found in environment variables!")
+            logger.error(Messages.Log.DISCORD_TOKEN_NOT_FOUND)
             return
         await bot.start(bot.config['discord']['token'])
     except Exception as e:
-        logger.error(f"Error starting bot: {e}")
+        logger.error(Messages.Log.BOT_START_ERROR.format(e))
         logger.error(f"Stack trace:\n{traceback.format_exc()}")
     finally:
         # Clean up

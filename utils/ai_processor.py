@@ -4,6 +4,7 @@ import openai
 from datetime import datetime
 import pytz
 from dateutil import parser
+from utils.messages import Messages
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +19,7 @@ class AIProcessor:
     async def process_announcement(self, message_content):
         """Process the announcement message and extract details"""
         try:
-            logger.info("Processing announcement with AI")
+            logger.info(Messages.Log.AI_PROCESSING)
             
             # Prepare the prompt
             prompt = self.prompt.replace("__message_content__", message_content)
@@ -42,7 +43,7 @@ class AIProcessor:
             
             # Extract the response
             ai_response = response.choices[0].message.content
-            logger.info(f"Raw AI response: {ai_response}")
+            logger.info(Messages.Log.AI_RAW_RESPONSE.format(ai_response))
             
             # Clean up markdown if present
             if "```" in ai_response:
@@ -56,7 +57,7 @@ class AIProcessor:
             
             # Parse the JSON
             parsed_response = json.loads(ai_response)
-            logger.info(f"Parsed response: {parsed_response}")
+            logger.info(Messages.Log.AI_PARSED_RESPONSE.format(parsed_response))
             
             # Convert to timestamp
             jst = pytz.timezone('Asia/Tokyo')
@@ -78,5 +79,5 @@ class AIProcessor:
             }
             
         except Exception as e:
-            logger.error(f"Error processing with AI: {e}")
-            return {"success": False, "error": f"AI処理中にエラーが発生しました。{str(e)}"} 
+            logger.error(Messages.Log.AI_PROCESS_ERROR.format(e))
+            return {"success": False, "error": Messages.Error.AI_ERROR.format(str(e))}

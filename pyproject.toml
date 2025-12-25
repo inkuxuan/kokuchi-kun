@@ -36,14 +36,12 @@ target-version = ["py38"]
 profile = "black"
 line_length = 88
 
-[tool.pytest]
+[tool.pytest.ini_options]
 testpaths = ["tests"]
+asyncio_default_fixture_loop_scope = "function"
 
 [dependency-groups]
 dev = [
     "pytest>=8.3.5",
     "pytest-asyncio>=0.24.0",
 ]
-
-[tool.pytest.ini_options]
-asyncio_default_fixture_loop_scope = "function"
