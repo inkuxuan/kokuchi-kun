@@ -4,6 +4,7 @@ from datetime import datetime
 import pytz
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.jobstores.memory import MemoryJobStore
+from utils.messages import Messages
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +23,7 @@ class Scheduler:
         job_id = str(uuid.uuid4())
         run_date = datetime.fromtimestamp(timestamp, tz=pytz.utc)
         
-        logger.info(f"Scheduling announcement for {run_date} with job ID {job_id}")
+        logger.info(Messages.Log.SCHEDULING_JOB.format(run_date, job_id))
         
         # Add job to scheduler
         self.scheduler.add_job(
@@ -49,13 +50,13 @@ class Scheduler:
     async def _post_announcement(self, job_id, title, content):
         """Execute the announcement posting"""
         try:
-            logger.info(f"Executing scheduled job {job_id}")
+            logger.info(Messages.Log.EXECUTING_JOB.format(job_id))
             
             # Re-authenticate if needed
             if not self.vrchat_api.authenticated:
                 auth_result = await self.vrchat_api.initialize()
                 if not auth_result['success']:
-                    logger.error(f"Failed to authenticate for job {job_id}: {auth_result['error']}")
+                    logger.error(Messages.Log.JOB_AUTH_FAIL.format(job_id, auth_result['error']))
                     self.jobs[job_id]['status'] = 'failed'
                     return
             
@@ -63,10 +64,10 @@ class Scheduler:
             result = await self.vrchat_api.post_announcement(title, content)
             
             if result['success']:
-                logger.info(f"Successfully posted announcement to VRChat, post ID: {result['post_id']}")
+                logger.info(Messages.Log.POST_SUCCESS.format(result['post_id']))
                 self.jobs[job_id]['status'] = 'success'
             else:
-                logger.error(f"Failed to post announcement to VRChat: {result['error']}")
+                logger.error(Messages.Log.POST_FAIL.format(result['error']))
                 self.jobs[job_id]['status'] = 'failed'
                 
                 # If authentication failed, we'll retry after reauth
@@ -79,7 +80,7 @@ class Scheduler:
                 del self.jobs[job_id]
                 
         except Exception as e:
-            logger.error(f"Error executing scheduled job {job_id}: {e}")
+            logger.error(Messages.Log.JOB_EXEC_ERROR.format(job_id, e))
             self.jobs[job_id]['status'] = 'failed'
     
     def list_jobs(self):
@@ -101,7 +102,7 @@ class Scheduler:
             del self.jobs[job_id]
             return True
         except Exception as e:
-            logger.error(f"Error cancelling job {job_id}: {e}")
+            logger.error(Messages.Log.JOB_CANCEL_ERROR.format(job_id, e))
             return False
     
     def cancel_job_by_message_id(self, message_id):
@@ -110,6 +111,13 @@ class Scheduler:
             if job['message_id'] == message_id:
                 return self.cancel_job(job_id)
         return False
+
+    def get_job_by_message_id(self, message_id):
+        """Get a scheduled job by message ID"""
+        for job in self.jobs.values():
+            if job['message_id'] == message_id:
+                return job
+        return None
     
     def shutdown(self):
         """Shutdown the scheduler"""

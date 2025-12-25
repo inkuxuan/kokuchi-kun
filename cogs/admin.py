@@ -4,6 +4,7 @@ from discord import app_commands
 import logging
 from typing import Optional
 import tomli
+from utils.messages import Messages
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +23,7 @@ class AdminCog(commands.Cog):
                 pyproject = tomli.load(f)
                 self.version = pyproject['project']['version']
         except Exception as e:
-            logger.error(f"Failed to load version from pyproject.toml: {e}")
+            logger.error(Messages.Log.VERSION_LOAD_FAIL.format(e))
             self.version = "unknown"
     
     async def cog_check(self, ctx):
@@ -44,11 +45,11 @@ class AdminCog(commands.Cog):
         jobs = self.scheduler.list_jobs()
         
         if not jobs:
-            await ctx.reply("予約されている告知はありません。")
+            await ctx.reply(Messages.Discord.NO_SCHEDULED_JOBS)
             return
             
         embed = discord.Embed(
-            title="予約されている告知",
+            title=Messages.Discord.SCHEDULED_JOBS_TITLE,
             color=discord.Color.blue()
         )
         
@@ -75,9 +76,9 @@ class AdminCog(commands.Cog):
         result = self.scheduler.cancel_job(job_id)
         
         if result:
-            await ctx.reply(f"ジョブID {job_id} の告知をキャンセルしました。")
+            await ctx.reply(Messages.Discord.JOB_CANCELLED.format(job_id))
         else:
-            await ctx.reply(f"ジョブID {job_id} は見つかりませんでした。")
+            await ctx.reply(Messages.Discord.JOB_NOT_FOUND.format(job_id))
             
     @commands.hybrid_command(
         name="help",
@@ -86,14 +87,14 @@ class AdminCog(commands.Cog):
     async def help_command(self, ctx):
         """Display help information"""
         embed = discord.Embed(
-            title="コマンド一覧",
+            title=Messages.Discord.CMD_LIST_TITLE,
             color=discord.Color.blue()
         )
         
         prefix = self.prefix
-        embed.add_field(name=f"{prefix}list または /list", value="予約されている告知の一覧を表示", inline=False)
-        embed.add_field(name=f"{prefix}cancel [ジョブID] または /cancel", value="指定されたジョブIDの告知をキャンセル", inline=False)
-        embed.add_field(name=f"{prefix}help または /help", value="このヘルプメッセージを表示", inline=False)
+        embed.add_field(name=f"{prefix}list または /list", value=Messages.Discord.CMD_LIST_DESC, inline=False)
+        embed.add_field(name=f"{prefix}cancel [ジョブID] または /cancel", value=Messages.Discord.CMD_CANCEL_DESC, inline=False)
+        embed.add_field(name=f"{prefix}help または /help", value=Messages.Discord.CMD_HELP_DESC, inline=False)
         
         # Add version information
         embed.set_footer(text=f"Version: {self.version}")
@@ -103,7 +104,7 @@ class AdminCog(commands.Cog):
     async def cog_app_command_error(self, interaction, error):
         """Handle errors from slash commands"""
         if isinstance(error, app_commands.errors.CheckFailure):
-            await interaction.response.send_message("このコマンドを実行する権限がありません。", ephemeral=True)
+            await interaction.response.send_message(Messages.Discord.NO_PERMISSION, ephemeral=True)
         else:
-            logger.error(f"Error in admin command: {str(error)}")
-            await interaction.response.send_message("コマンドの実行中にエラーが発生しました。", ephemeral=True) 
+            logger.error(Messages.Log.ADMIN_CMD_ERROR.format(str(error)))
+            await interaction.response.send_message(Messages.Discord.CMD_EXEC_ERROR, ephemeral=True)
