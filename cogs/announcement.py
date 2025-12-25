@@ -88,13 +88,13 @@ class AnnouncementCog(commands.Cog):
             # Send restoration message
             channel = self.bot.get_channel(self.channel_ids[0])
             if channel:
-                msg = f"{pending_count} pending, {restored_jobs} booked announcements restored"
+                msg = Messages.Discord.RESTORATION_STATS.format(pending_count, restored_jobs)
                 await channel.send(msg)
 
                 # Notify about skipped jobs
                 if skipped_jobs:
                     skipped_titles = [f"- {job['title']}" for job in skipped_jobs]
-                    skipped_msg = f"⚠️ Skipped {len(skipped_jobs)} announcements that were scheduled while offline:\n" + "\n".join(skipped_titles)
+                    skipped_msg = Messages.Discord.SKIPPED_JOBS.format(len(skipped_jobs), "\n".join(skipped_titles))
                     await channel.send(skipped_msg)
 
         except Exception as e:
