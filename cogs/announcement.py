@@ -4,6 +4,7 @@ from discord.ext import commands
 from discord import app_commands
 import asyncio
 import uuid
+import time
 from utils.messages import Messages
 from utils.persistence import Persistence
 
@@ -359,6 +360,16 @@ class AnnouncementCog(commands.Cog):
             
             if not result["success"]:
                 await processing_msg.edit(content=Messages.Discord.ERROR_OCCURRED.format(result['error']))
+                return
+
+            # Check if timestamp is in the past (more than 1 hour ago)
+            current_timestamp = time.time()
+            if result["timestamp"] < current_timestamp - 3600:
+                role_mention = f"<@&{self.admin_role_id}>"
+                author_mention = message.author.mention
+                mentions = f"{role_mention} {author_mention}"
+
+                await processing_msg.edit(content=Messages.Discord.PAST_TIME_WARNING.format(mentions=mentions))
                 return
                 
             # Schedule the announcement

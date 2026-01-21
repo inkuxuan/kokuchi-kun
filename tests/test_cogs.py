@@ -4,6 +4,7 @@ import asyncio
 from unittest.mock import MagicMock, patch, AsyncMock
 import sys
 import os
+import time
 
 from cogs.admin import AdminCog
 from cogs.announcement import AnnouncementCog
@@ -60,12 +61,14 @@ class TestCogs:
     def mock_ai_processor(self):
         """Create a mock AI processor."""
         processor = MagicMock()
+        # Make sure timestamp is in the future relative to time.time()
+        # Using a very large timestamp to be safe
         processor.process_announcement = AsyncMock(return_value={
             'success': True,
-            'timestamp': 1679990400, # 2023-03-28 15:00:00
+            'timestamp': 4102444800, # 2100-01-01 00:00:00
             'title': 'AI Processed Title',
             'content': 'AI processed content for VRChat announcement',
-            'formatted_date_time': '2023-03-28 15:00:00'
+            'formatted_date_time': '2100-01-01 00:00:00'
         })
         return processor
 
@@ -98,6 +101,7 @@ class TestCogs:
         message.author.bot = False
         message.author.id = 987123456
         message.author.name = "Test User"
+        message.author.mention = "<@987123456>"
         
         message.channel = MagicMock()
         message.channel.id = 987654321
@@ -303,3 +307,64 @@ class TestCogs:
 
         # Verify persistence save
         announcement_cog.persistence.save_data.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_process_approved_announcement_past_time_warning(self, announcement_cog, mock_message):
+        """Test that scheduling is blocked and warning sent for times > 1h in past."""
+        # Mock processing message
+        processing_msg = AsyncMock()
+        mock_message.reply.return_value = processing_msg
+
+        # Mock AI result - timestamp 2 hours ago
+        current_time = time.time()
+        past_time = current_time - 7200 # 2 hours ago
+
+        announcement_cog.ai_processor.process_announcement.return_value = {
+            "success": True,
+            "timestamp": past_time,
+            "title": "Test Title",
+            "content": "Test Content"
+        }
+
+        # Run method
+        await announcement_cog._process_approved_announcement(mock_message)
+
+        # Verify AI called
+        announcement_cog.ai_processor.process_announcement.assert_called_with(mock_message.content)
+
+        # Verify Warning was sent via edit
+        expected_mentions = f"<@&111222333> {mock_message.author.mention}"
+        expected_content = Messages.Discord.PAST_TIME_WARNING.format(mentions=expected_mentions)
+        processing_msg.edit.assert_called_with(content=expected_content)
+
+        # Verify scheduler NOT called
+        announcement_cog.scheduler.schedule_announcement.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_process_approved_announcement_recent_past_time_success(self, announcement_cog, mock_message):
+        """Test that scheduling proceeds for times < 1h in past."""
+        # Mock processing message
+        processing_msg = AsyncMock()
+        mock_message.reply.return_value = processing_msg
+
+        # Mock AI result - timestamp 30 minutes ago
+        current_time = time.time()
+        recent_past_time = current_time - 1800 # 30 mins ago
+
+        announcement_cog.ai_processor.process_announcement.return_value = {
+            "success": True,
+            "timestamp": recent_past_time,
+            "title": "Test Title",
+            "content": "Test Content"
+        }
+
+        # Run method
+        await announcement_cog._process_approved_announcement(mock_message)
+
+        # Verify scheduler CALLED
+        announcement_cog.scheduler.schedule_announcement.assert_called_once()
+
+        # Verify success embed sent
+        call_kwargs = processing_msg.edit.call_args[1]
+        assert 'embed' in call_kwargs
+        assert call_kwargs.get('content') is None
