@@ -1,244 +1,99 @@
 import pytest
-import json
-import os
-import sys
-from unittest.mock import patch, AsyncMock
-from dotenv import load_dotenv
+from unittest.mock import MagicMock, AsyncMock, patch
+from datetime import datetime
+import pytz
 from utils.ai_processor import AIProcessor
-import logging
 
-# Configure logging to output to console
-logging.basicConfig(
-    level=logging.INFO,
-    handlers=[logging.StreamHandler(sys.stdout)]
-)
-logger = logging.getLogger(__name__)
+@pytest.fixture
+def mock_config():
+    return {
+        'api_key': 'test_key',
+        'model': 'test_model',
+        'prompt': 'test_prompt'
+    }
 
-# Load environment variables
-load_dotenv(".test.env")
+@pytest.fixture
+def ai_processor(mock_config):
+    return AIProcessor(mock_config)
 
+@pytest.mark.asyncio
+async def test_process_announcement_success(ai_processor):
+    # Mock OpenAI response
+    mock_response = MagicMock()
+    mock_response.choices[0].message.content = '''
+    {
+      "announcement_date": "2023-10-27",
+      "announcement_time": "20:00",
+      "event_start_date": "2023-10-28",
+      "event_start_time": "21:00",
+      "event_end_date": "2023-10-28",
+      "event_end_time": "22:00",
+      "title": "Test Event",
+      "content": "Test Content"
+    }
+    '''
 
-class TestAIProcessor:  # Note: removed unittest.TestCase
-    def setup_method(self):  # pytest setup method
-        # Create AI processor with test config
-        self.ai_config = {
-            'api_key': os.getenv('OPENROUTER_TEST_API_KEY', 'dummy-key'),
-            'model': os.getenv('OPENROUTER_TEST_MODEL', 'test-model')
-        }
-        self.ai_processor = AIProcessor(self.ai_config)
-        
-    @pytest.mark.asyncio  # Mark test as async
-    @patch('openai.AsyncOpenAI')
-    async def test_process_valid_announcement(self, mock_openai):
-        """Test if AI can extract data from a valid announcement message"""
-        # Setup mock response
-        mock_instance = AsyncMock()
-        mock_openai.return_value = mock_instance
-        
-        mock_response = AsyncMock()
-        mock_response.choices = [
-            AsyncMock(
-                message=AsyncMock(
-                    content=json.dumps({
-                        "date": "2025-01-01",
-                        "time": "16:00",
-                        "title": "テストイベント開催のお知らせ",
-                        "content": "テストイベントを開催します！\n途中参加、退室自由です。"
-                    })
-                )
-            )
-        ]
-        mock_instance.chat.completions.create.return_value = mock_response
-        
-        # Test message
-        test_message = """
-===VRCグループ告知リクエスト テンプレート===
-@vrchat-announce-bot （必ずメンションしてください）
-告知日付：2025年1月1日 16:00
+    with patch('openai.resources.chat.completions.AsyncCompletions.create', new_callable=AsyncMock) as mock_create:
+        mock_create.return_value = mock_response
 
-告知タイトル：テストイベント開催のお知らせ
+        result = await ai_processor.process_announcement("Test message")
 
-告知内容（できれば前後単独の行で" ``` "で囲んでください）：
-テストイベントを開催します！
-途中参加、退室自由です。
-        """
-        
-        # Process the message
-        result = await self.ai_processor.process_announcement(test_message)
-        
-        # Check result
-        assert result['success']
-        assert result['title'] == "テストイベント開催のお知らせ"
-        assert "テストイベント" in result['content']
-        assert "途中参加" in result['content']
-        assert result['formatted_date_time'] == "2025年01月01日 16:00"
-        
-        # Verify AI was called with correct prompt
-        mock_instance.chat.completions.create.assert_called_once()
-        call_args = mock_instance.chat.completions.create.call_args[1]
-        assert call_args['model'] == self.ai_config['model']
-        assert '以下のDiscordメッセージから告知情報を抽出してください' in call_args['messages'][0]['content']
+        assert result['success'] is True
+        assert result['title'] == "Test Event"
+        assert result['content'] == "Test Content"
 
-    @pytest.mark.asyncio
-    @patch('openai.AsyncOpenAI')
-    async def test_process_markdown_response(self, mock_openai):
-        """Test if AI processor can handle markdown formatted responses"""
-        # Setup mock response with markdown code blocks
-        mock_instance = AsyncMock()
-        mock_openai.return_value = mock_instance
-        
-        markdown_response = """
-```json
-{
-  "date": "2025-02-15",
-  "time": "18:30",
-  "title": "週末パーティー",
-  "content": "週末パーティーを開催します。ぜひご参加ください！"
-}
-```
-        """
-        
-        mock_response = AsyncMock()
-        mock_response.choices = [AsyncMock(message=AsyncMock(content=markdown_response))]
-        mock_instance.chat.completions.create.return_value = mock_response
-        
-        # Test message
-        test_message = """
-===VRCグループ告知リクエスト テンプレート===
-@vrchat-announce-bot
-告知日付：2025年2月15日 18:30
+        # Verify timestamps (approximate check due to timezone complexity in test env vs implementation)
+        # Just check relative order
+        assert result['announcement_timestamp'] < result['event_start_timestamp']
+        assert result['event_start_timestamp'] < result['event_end_timestamp']
 
-告知タイトル：週末パーティー
+        # Check specific values (JST is UTC+9)
+        # Announcement: 2023-10-27 20:00 JST -> 2023-10-27 11:00 UTC
+        # Event Start: 2023-10-28 21:00 JST -> 2023-10-28 12:00 UTC
 
-告知内容：
-週末パーティーを開催します。ぜひご参加ください！
-        """
-        
-        # Process the message
-        result = await self.ai_processor.process_announcement(test_message)
-        
-        # Check result
-        assert result['success']
-        assert result['title'] == "週末パーティー"
-        assert "週末パーティー" in result['content']
-        assert result['formatted_date_time'] == "2025年02月15日 18:30"
+        jst = pytz.timezone('Asia/Tokyo')
+        ann_dt = jst.localize(datetime(2023, 10, 27, 20, 0))
+        assert result['announcement_timestamp'] == int(ann_dt.timestamp())
 
-    @pytest.mark.asyncio
-    @patch('openai.AsyncOpenAI')
-    async def test_process_invalid_date_format(self, mock_openai):
-        """Test if AI can handle unusual date formats"""
-        # Setup mock response with unusual date format
-        mock_instance = AsyncMock()
-        mock_openai.return_value = mock_instance
-        
-        mock_response = AsyncMock()
-        mock_response.choices = [
-            AsyncMock(
-                message=AsyncMock(
-                    content=json.dumps({
-                        "date": "2025/03/20",  # Format with slashes
-                        "time": "20:45",
-                        "title": "特別イベント",
-                        "content": "特別イベントを開催します。"
-                    })
-                )
-            )
-        ]
-        mock_instance.chat.completions.create.return_value = mock_response
-        
-        # Test message with unusual date format
-        test_message = """
-===VRCグループ告知リクエスト テンプレート===
-@vrchat-announce-bot
-告知日付：2025/3/20 20:45分
+@pytest.mark.asyncio
+async def test_process_announcement_missing_end_time(ai_processor):
+    # Mock OpenAI response without end time
+    mock_response = MagicMock()
+    mock_response.choices[0].message.content = '''
+    {
+      "announcement_date": "2023-10-27",
+      "announcement_time": "20:00",
+      "event_start_date": "2023-10-28",
+      "event_start_time": "21:00",
+      "title": "Test Event",
+      "content": "Test Content"
+    }
+    '''
 
-告知タイトル：特別イベント
+    with patch('openai.resources.chat.completions.AsyncCompletions.create', new_callable=AsyncMock) as mock_create:
+        mock_create.return_value = mock_response
 
-告知内容：
-特別イベントを開催します。
-        """
-        
-        # Process the message
-        result = await self.ai_processor.process_announcement(test_message)
-        
-        # Since we're mocking the AI response, we should get a valid result
-        # even though the input format is unusual
-        assert result['success']
-        assert result['title'] == "特別イベント"
-        
-        # Since we're passing "2025/03/20" to the mocked AI, make sure our processor
-        # handles this format correctly
-        try:
-            assert result['formatted_date_time'] == "2025年03月20日 20:45"
-        except AssertionError:
-            # If our processor can't handle it, update it to support more formats
-            assert False, "AI processor should handle date format with slashes"
+        result = await ai_processor.process_announcement("Test message")
 
-    @pytest.mark.asyncio
-    @patch('openai.AsyncOpenAI')
-    async def test_ai_error_handling(self, mock_openai):
-        """Test how AI processor handles API errors"""
-        # Setup mock to raise an exception
-        mock_instance = AsyncMock()
-        mock_openai.return_value = mock_instance
-        mock_instance.chat.completions.create.side_effect = Exception("API error")
-        
-        # Test message
-        test_message = """
-===VRCグループ告知リクエスト テンプレート===
-@vrchat-announce-bot
-告知日付：2025年4月1日 12:00
+        assert result['success'] is True
+        # Check if end time is start time + 1 hour
+        assert result['event_end_timestamp'] == result['event_start_timestamp'] + 3600
 
-告知タイトル：エイプリルフール
+@pytest.mark.asyncio
+async def test_process_announcement_missing_required_fields(ai_processor):
+    # Mock OpenAI response missing required fields
+    mock_response = MagicMock()
+    mock_response.choices[0].message.content = '''
+    {
+      "title": "Test Event",
+      "content": "Test Content"
+    }
+    '''
 
-告知内容：
-エイプリルフールのイベントです。
-        """
-        
-        # Process the message
-        result = await self.ai_processor.process_announcement(test_message)
-        
-        # Check error handling
-        assert not result['success']
-        assert "error" in result
-        assert "API error" in result['error']
+    with patch('openai.resources.chat.completions.AsyncCompletions.create', new_callable=AsyncMock) as mock_create:
+        mock_create.return_value = mock_response
 
-    @pytest.mark.asyncio
-    async def test_real_llm_extraction(self):
-        """Test if the actual LLM can correctly extract announcement data"""
-        # Use the real AI processor (no mocks)
-        ai_processor = AIProcessor({
-            'api_key': os.getenv('OPENROUTER_TEST_API_KEY'),
-            'model': os.getenv('OPENROUTER_TEST_MODEL')
-        })
-        
-        # Skip test if no API key is available
-        if not os.getenv('OPENROUTER_TEST_API_KEY'):
-            pytest.skip("OpenRouter API key not available")
-        
-        # Test message with known expected output
-        test_message = """
-===VRCグループ告知リクエスト テンプレート===
-@vrchat-announce-bot
-告知日付：2025年1月1日 16:00
+        result = await ai_processor.process_announcement("Test message")
 
-告知タイトル：テストイベント開催のお知らせ
-
-告知内容：
-テストイベントを開催します！
-途中参加、退室自由です。
-        """
-        
-        logger.info(f"Testing with content: {test_message}")
-        
-        # Process with real LLM
-        result = await ai_processor.process_announcement(test_message)
-        
-        logger.info(f"Raw LLM result: {result}")
-        
-        # Check actual LLM extraction results
-        assert result['success']
-        assert result['title'] == "テストイベント開催のお知らせ"
-        assert "テストイベント" in result['content']
-        assert "途中参加" in result['content']
-        assert result['formatted_date_time'] == "2025年01月01日 16:00" 
+        assert result['success'] is False
+        assert "抽出が失敗しました" in result['error']

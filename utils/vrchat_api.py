@@ -3,6 +3,8 @@ import os
 import json
 import vrchatapi
 import sys
+from datetime import datetime
+import pytz
 from vrchatapi.api.authentication_api import AuthenticationApi
 from vrchatapi.api.groups_api import GroupsApi
 from vrchatapi.exceptions import UnauthorizedException, ApiException
@@ -330,6 +332,72 @@ class VRChatAPI:
             logger.error(Messages.Log.POST_ERROR.format(e))
             return {"success": False, "error": str(e)}
     
+    async def create_group_calendar_event(self, title, content, start_at, end_at):
+        """Create a group calendar event"""
+        if not self.authenticated or not self.api_client:
+            return {"success": False, "error": Messages.Error.NOT_AUTHENTICATED}
+
+        try:
+            from vrchatapi.api.calendar_api import CalendarApi
+            from vrchatapi.models.calendar_event_access import CalendarEventAccess
+            from vrchatapi.models.calendar_event_category import CalendarEventCategory
+
+            calendar_api = CalendarApi(self.api_client)
+
+            # Ensure start_at and end_at are datetime objects
+            if isinstance(start_at, (int, float)):
+                start_at = datetime.fromtimestamp(start_at, tz=pytz.utc)
+            if isinstance(end_at, (int, float)):
+                end_at = datetime.fromtimestamp(end_at, tz=pytz.utc)
+
+            logger.info(f"Creating calendar event: {title} ({start_at} - {end_at})")
+
+            event = calendar_api.create_group_calendar_event(
+                group_id=self.group_id,
+                create_calendar_event_request={
+                    "title": title,
+                    "description": content,
+                    "startsAt": start_at,
+                    "endsAt": end_at,
+                    "visibility": "public", # Use string "public" or CalendarEventAccess.PUBLIC which is "public"
+                    "accessType": CalendarEventAccess.PUBLIC,
+                    "category": CalendarEventCategory.OTHER,
+                    "sendCreationNotification": False
+                }
+            )
+
+            return {
+                "success": True,
+                "event": event,
+                "event_id": event.id
+            }
+
+        except Exception as e:
+            logger.error(f"Error creating calendar event: {e}")
+            return {"success": False, "error": str(e)}
+
+    async def delete_group_calendar_event(self, calendar_event_id):
+        """Delete a group calendar event"""
+        if not self.authenticated or not self.api_client:
+            return {"success": False, "error": Messages.Error.NOT_AUTHENTICATED}
+
+        try:
+            from vrchatapi.api.calendar_api import CalendarApi
+            calendar_api = CalendarApi(self.api_client)
+
+            logger.info(f"Deleting calendar event: {calendar_event_id}")
+
+            calendar_api.delete_group_calendar_event(
+                group_id=self.group_id,
+                event_id=calendar_event_id
+            )
+
+            return {"success": True}
+
+        except Exception as e:
+            logger.error(f"Error deleting calendar event: {e}")
+            return {"success": False, "error": str(e)}
+
     async def retry_failed_posts(self):
         """Retry all failed posts"""
         if not self.failed_posts:
@@ -373,4 +441,4 @@ class VRChatAPI:
             self.api_client.close()
             self.api_client = None
             self.authenticated = False
-            self.current_user = None 
+            self.current_user = None
