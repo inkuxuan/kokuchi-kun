@@ -392,7 +392,7 @@ class VRChatAPI:
 
             calendar_api.delete_group_calendar_event(
                 group_id=self.group_id,
-                event_id=calendar_event_id
+                calendar_id=calendar_event_id
             )
 
             return {"success": True}
