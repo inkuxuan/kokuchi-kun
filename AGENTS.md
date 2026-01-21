@@ -17,6 +17,11 @@ uv dd numpy
 uv export --format requirements.txt --output-file requirements.txt
 ```
 
+Whenever you need to run a python-related commands, run it like
+```bash
+uv run pytest
+```
+
 ## Test codes
 
 Test codes should always be committed and included in the PR
