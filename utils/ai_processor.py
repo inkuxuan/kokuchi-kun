@@ -63,7 +63,7 @@ class AIProcessor:
             
             # Extract Announcement Time
             if not parsed_response.get('announcement_date') or not parsed_response.get('announcement_time'):
-                 return {"success": False, "error": "告知時刻、又はイベント時刻の抽出が失敗しました。"}
+                 return {"success": False, "error": Messages.Error.AI_ANNOUNCEMENT_TIME_FAIL}
 
             ann_dt_str = f"{parsed_response['announcement_date']} {parsed_response['announcement_time']}"
             ann_dt = parser.parse(ann_dt_str)
@@ -72,7 +72,7 @@ class AIProcessor:
 
             # Extract Event Start Time
             if not parsed_response.get('event_start_date') or not parsed_response.get('event_start_time'):
-                 return {"success": False, "error": "告知時刻、又はイベント時刻の抽出が失敗しました。"}
+                 return {"success": False, "error": Messages.Error.AI_EVENT_TIME_FAIL}
 
             event_start_str = f"{parsed_response['event_start_date']} {parsed_response['event_start_time']}"
             event_start_dt = parser.parse(event_start_str)
