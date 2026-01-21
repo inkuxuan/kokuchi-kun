@@ -13,7 +13,7 @@ Be considerate to others, do NOT use `pip install`
 Whenever you need a new package installed or updated, modify pyproject.toml using `uv`, and update `requirements.txt`. 
 For example
 ```bash
-uv dd numpy
+uv add numpy
 uv export --format requirements.txt --output-file requirements.txt
 ```
 
@@ -21,6 +21,8 @@ Whenever you need to run a python-related commands, run it like
 ```bash
 uv run pytest
 ```
+
+When making a PR, make sure to include changes in `pyproject.toml` and `requirements.txt` if you installed or updated packages.
 
 ## Test codes
 
