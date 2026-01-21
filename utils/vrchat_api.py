@@ -350,8 +350,8 @@ class VRChatAPI:
             if isinstance(end_at, (int, float)):
                 end_at = datetime.fromtimestamp(end_at, tz=pytz.utc)
             
-            start_at = start_at.isoformat()
-            end_at = end_at.isoformat()
+            start_at = start_at.strftime('%Y-%m-%dT%H:%M:%SZ')
+            end_at = end_at.strftime('%Y-%m-%dT%H:%M:%SZ')
 
             logger.info(f"Creating calendar event: {title} ({start_at} - {end_at})")
 
