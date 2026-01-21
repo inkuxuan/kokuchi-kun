@@ -349,6 +349,9 @@ class VRChatAPI:
                 start_at = datetime.fromtimestamp(start_at, tz=pytz.utc)
             if isinstance(end_at, (int, float)):
                 end_at = datetime.fromtimestamp(end_at, tz=pytz.utc)
+            
+            start_at = start_at.strftime('%Y-%m-%dT%H:%M:%SZ')
+            end_at = end_at.strftime('%Y-%m-%dT%H:%M:%SZ')
 
             logger.info(f"Creating calendar event: {title} ({start_at} - {end_at})")
 
@@ -389,7 +392,7 @@ class VRChatAPI:
 
             calendar_api.delete_group_calendar_event(
                 group_id=self.group_id,
-                event_id=calendar_event_id
+                calendar_id=calendar_event_id
             )
 
             return {"success": True}

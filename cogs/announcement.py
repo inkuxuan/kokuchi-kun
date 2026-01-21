@@ -357,11 +357,14 @@ class AnnouncementCog(commands.Cog):
                      is_author = request_message.author.id == payload.user_id
 
                      if is_admin or is_author:
-                         calendar_event_id = self.calendar_events[str(request_msg_id)]
-                         await self.scheduler.vrchat_api.delete_group_calendar_event(calendar_event_id)
-                         del self.calendar_events[str(request_msg_id)]
-                         self.save_state()
-                         await channel.send(Messages.Discord.CALENDAR_DELETED)
+                        calendar_event_id = self.calendar_events[str(request_msg_id)]
+                        result = await self.scheduler.vrchat_api.delete_group_calendar_event(calendar_event_id)
+                        del self.calendar_events[str(request_msg_id)]
+                        self.save_state()
+                        if result['success']:
+                            await channel.send(Messages.Discord.CALENDAR_DELETED)
+                        else:
+                            await channel.send(result['error'])
                 except Exception as e:
                     logger.error(Messages.Log.CALENDAR_EVENT_DELETE_ERROR.format(e))
 
