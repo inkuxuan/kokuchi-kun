@@ -1,7 +1,7 @@
 import logging
 import json
 import openai
-from datetime import datetime
+from datetime import datetime, timedelta
 import pytz
 from dateutil import parser
 from utils.messages import Messages
@@ -59,21 +59,44 @@ class AIProcessor:
             parsed_response = json.loads(ai_response)
             logger.info(Messages.Log.AI_PARSED_RESPONSE.format(parsed_response))
             
-            # Convert to timestamp
             jst = pytz.timezone('Asia/Tokyo')
             
-            # Parse date and time with flexible format detection
-            date_time_str = f"{parsed_response['date']} {parsed_response['time']}"
-            date_time = parser.parse(date_time_str)
-            
-            # Continue with timezone handling
-            date_time = jst.localize(date_time.replace(tzinfo=None))
-            timestamp = int(date_time.timestamp())
-            
+            # Extract Announcement Time
+            if not parsed_response.get('announcement_date') or not parsed_response.get('announcement_time'):
+                 return {"success": False, "error": "告知時刻、又はイベント時刻の抽出が失敗しました。"}
+
+            ann_dt_str = f"{parsed_response['announcement_date']} {parsed_response['announcement_time']}"
+            ann_dt = parser.parse(ann_dt_str)
+            ann_dt = jst.localize(ann_dt.replace(tzinfo=None))
+            announcement_timestamp = int(ann_dt.timestamp())
+
+            # Extract Event Start Time
+            if not parsed_response.get('event_start_date') or not parsed_response.get('event_start_time'):
+                 return {"success": False, "error": "告知時刻、又はイベント時刻の抽出が失敗しました。"}
+
+            event_start_str = f"{parsed_response['event_start_date']} {parsed_response['event_start_time']}"
+            event_start_dt = parser.parse(event_start_str)
+            event_start_dt = jst.localize(event_start_dt.replace(tzinfo=None))
+            event_start_timestamp = int(event_start_dt.timestamp())
+
+            # Extract or Default Event End Time
+            if parsed_response.get('event_end_date') and parsed_response.get('event_end_time'):
+                event_end_str = f"{parsed_response['event_end_date']} {parsed_response['event_end_time']}"
+                event_end_dt = parser.parse(event_end_str)
+                event_end_dt = jst.localize(event_end_dt.replace(tzinfo=None))
+                event_end_timestamp = int(event_end_dt.timestamp())
+            else:
+                # Default to 1 hour after start
+                event_end_dt = event_start_dt + timedelta(hours=1)
+                event_end_timestamp = int(event_end_dt.timestamp())
+
             return {
                 "success": True,
-                "timestamp": timestamp,
-                "formatted_date_time": date_time.strftime('%Y年%m月%d日 %H:%M'),
+                "timestamp": announcement_timestamp, # Kept for backward compatibility logic in cog
+                "announcement_timestamp": announcement_timestamp,
+                "event_start_timestamp": event_start_timestamp,
+                "event_end_timestamp": event_end_timestamp,
+                "formatted_date_time": ann_dt.strftime('%Y年%m月%d日 %H:%M'),
                 "title": parsed_response["title"],
                 "content": parsed_response["content"]
             }

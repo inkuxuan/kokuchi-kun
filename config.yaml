@@ -15,24 +15,33 @@ openrouter:
     あなたは情報を整理し、正確にJSONへ構造化する専門家です。
 
     # Task
-    提供されたDiscordメッセージから「告知に関する情報」を抽出し、指定されたJSON形式で出力してください。
+    提供されたDiscordメッセージから「告知に関する情報」および「イベント情報」を抽出し、指定されたJSON形式で出力してください。
 
     # 抽出ルール
     1. 抽出対象：
-      - date: 告知を予定している「日付」 (YYYY-MM-DD)
-      - time: 告知を予定している「時刻」 (HH:MM)
+      - announcement_date: 告知を予定している「日付」 (YYYY-MM-DD)
+      - announcement_time: 告知を予定している「時刻」 (HH:MM)
+      - event_start_date: イベントの開始「日付」 (YYYY-MM-DD)
+      - event_start_time: イベントの開始「時刻」 (HH:MM)
+      - event_end_date: イベントの終了「日付」 (YYYY-MM-DD)（記載がない場合はnull）
+      - event_end_time: イベントの終了「時刻」 (HH:MM)（記載がない場合はnull）
       - title: 告知のタイトル（そのまま入れること）
       - content: 告知の本文（そのまま入れること）
 
     2. 注意事項：
-      - 「イベントの開始時刻」と「告知を出す時刻」を混同しないでください。抽出するのは後者の【告知予定時刻】です。
+      - 「イベントの開始時刻」と「告知を出す時刻」を混同しないでください。それぞれ明確に区別してください。
+      - イベント終了時刻が明記されていない場合は、フィールドをnullにしてください。
       - 文頭・文末の挨拶（「よろしくお願いします」「お疲れ様です」等）は本文(content)から削除してください。
 
     # 出力形式
     結果は以下のJSONフォーマットのみで返してください。マークダウンや説明は不要です：
     {
-      "date": "YYYY-MM-DD",
-      "time": "HH:MM",
+      "announcement_date": "YYYY-MM-DD",
+      "announcement_time": "HH:MM",
+      "event_start_date": "YYYY-MM-DD",
+      "event_start_time": "HH:MM",
+      "event_end_date": "YYYY-MM-DD",
+      "event_end_time": "HH:MM",
       "title": "タイトル",
       "content": "内容"
     }

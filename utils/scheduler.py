@@ -23,7 +23,7 @@ class Scheduler:
         """Set callback for job completion (success or failure)"""
         self.on_job_completion = callback
         
-    async def schedule_announcement(self, timestamp, title, content, message_id):
+    async def schedule_announcement(self, timestamp, title, content, message_id, event_start_timestamp=None, event_end_timestamp=None):
         """Schedule an announcement for the given timestamp"""
         job_id = str(uuid.uuid4())
         run_date = datetime.fromtimestamp(timestamp, tz=pytz.utc)
@@ -45,6 +45,8 @@ class Scheduler:
             'id': job_id,
             'message_id': message_id,
             'timestamp': timestamp,
+            'event_start_timestamp': event_start_timestamp,
+            'event_end_timestamp': event_end_timestamp,
             'formatted_date_time': datetime.fromtimestamp(timestamp).strftime('%Y年%m月%d日 %H:%M'),
             'title': title,
             'content': content,
@@ -171,4 +173,4 @@ class Scheduler:
     
     def shutdown(self):
         """Shutdown the scheduler"""
-        self.scheduler.shutdown() 
+        self.scheduler.shutdown()

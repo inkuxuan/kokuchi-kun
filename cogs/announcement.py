@@ -21,7 +21,9 @@ class AnnouncementCog(commands.Cog):
         self.seen_emoji = config['discord'].get('seen_reaction_emoji', "👀")
         self.approval_emoji = config['discord'].get('approval_reaction_emoji', "👍")
         self.fast_forward_emoji = config['discord'].get('fast_forward_emoji', "⏩")
+        self.calendar_emoji = "📅"
         self.pending_requests = {}  # Store message IDs and their scheduled message IDs
+        self.calendar_events = {} # Store message IDs and their calendar event IDs
         self.queued_announcements = set()  # Store message IDs that have been queued
         self.history = [] # List of completed message IDs (limit 1000)
         self.otp_requests = {}  # Store OTP requests and their futures
@@ -62,11 +64,13 @@ class AnnouncementCog(commands.Cog):
         self.persistence.save_data('pending.json', self.pending_requests)
         self.persistence.save_data('history.json', self.history)
         self.persistence.save_data('jobs.json', self.scheduler.get_jobs_data())
+        self.persistence.save_data('calendar_events.json', self.calendar_events)
 
     def load_state(self):
         """Load state from disk"""
         self.pending_requests = self.persistence.load_data('pending.json', {})
         self.history = self.persistence.load_data('history.json', [])
+        self.calendar_events = self.persistence.load_data('calendar_events.json', {})
 
         jobs_data = self.persistence.load_data('jobs.json', [])
         restored_count, skipped_jobs = self.scheduler.restore_jobs(jobs_data)
@@ -227,6 +231,30 @@ class AnnouncementCog(commands.Cog):
                 await self._process_approved_announcement(message)
                 return
 
+            # Case 3: Create Calendar Event (Reaction to User's message)
+            if str(payload.emoji) == self.calendar_emoji:
+                message = await channel.fetch_message(payload.message_id)
+                if not message:
+                    return
+
+                # Verify user is Author or Admin
+                is_admin = member and self.admin_role_id in [role.id for role in member.roles]
+                is_author = message.author.id == payload.user_id
+
+                if not (is_admin or is_author):
+                    return
+
+                # Verify message corresponds to a scheduled job
+                if str(message.id) not in self.queued_announcements:
+                    return
+
+                # Check if event already exists
+                if str(message.id) in self.calendar_events:
+                    return
+
+                await self._process_calendar_event_creation(message, channel)
+                return
+
         # Case 2: Immediate posting of queued announcement (Reaction to Bot's message)
         if str(payload.emoji) == self.fast_forward_emoji:
             # Find the original request ID based on the bot's message ID (queued message)
@@ -250,6 +278,47 @@ class AnnouncementCog(commands.Cog):
                 except Exception as e:
                     logger.error(f"Error handling immediate post request: {e}")
     
+    async def _process_calendar_event_creation(self, message, channel):
+        """Process the creation of a VRChat calendar event"""
+        try:
+            job = self.scheduler.get_job_by_message_id(str(message.id))
+            if not job:
+                logger.warning(f"No job found for message {message.id} when creating calendar event")
+                return
+
+            # Retrieve event details from job
+            title = job['title']
+            content = job['content']
+            start_at = job.get('event_start_timestamp')
+            end_at = job.get('event_end_timestamp')
+
+            if not start_at or not end_at:
+                await channel.send("エラー：イベントの開始時刻または終了時刻が見つかりません。")
+                return
+
+            # Call VRChat API
+            result = await self.scheduler.vrchat_api.create_group_calendar_event(title, content, start_at, end_at)
+
+            if result['success']:
+                calendar_id = result['event_id']
+                group_id = self.scheduler.vrchat_api.group_id
+
+                # Store event ID
+                self.calendar_events[str(message.id)] = calendar_id
+                self.save_state()
+
+                # Send success message
+                calendar_url = f"https://vrchat.com/home/group/{group_id}/calendar/{calendar_id}"
+                await channel.send(f"VRChatイベントカレンダーを作成しました \n {calendar_url}")
+            else:
+                error_msg = result.get('error', 'Unknown error')
+                await channel.send(f"カレンダーイベントの作成に失敗しました: {error_msg}")
+                logger.error(f"Failed to create calendar event: {error_msg}")
+
+        except Exception as e:
+            logger.error(f"Exception in calendar event creation: {e}")
+            await channel.send(f"エラーが発生しました: {str(e)}")
+
     @commands.Cog.listener()
     async def on_raw_reaction_remove(self, payload):
         """Handle reaction removals"""
@@ -265,39 +334,70 @@ class AnnouncementCog(commands.Cog):
         if payload.channel_id not in self.channel_ids:
             return
             
-        # Check if it was an approval reaction
-        if str(payload.emoji) != self.approval_emoji:
-            return
-            
         channel = self.bot.get_channel(payload.channel_id)
         if not channel:
             return
-            
-        message = await channel.fetch_message(payload.message_id)
-        if not message:
-            return
-            
-        # Check if there are any approval reactions left
-        approval_reactions = [r for r in message.reactions if str(r.emoji) == self.approval_emoji]
-        if not approval_reactions or approval_reactions[0].count == 0:
-            # Cancel the job and delete the scheduled message
-            if self.scheduler.cancel_job_by_message_id(str(message.id)):
-                scheduled_msg_id = self.pending_requests.get(str(message.id))
-                if scheduled_msg_id:
-                    try:
-                        scheduled_msg = await channel.fetch_message(scheduled_msg_id)
-                        if scheduled_msg:
-                            await scheduled_msg.delete()
-                    except Exception as e:
-                        logger.error(Messages.Log.SCHEDULED_MSG_DELETE_ERROR.format(e))
+
+        # Case: Removal of Calendar reaction
+        if str(payload.emoji) == self.calendar_emoji:
+            if str(payload.message_id) in self.calendar_events:
+                 # Check permissions again just to be safe?
+                 # The user removing it must be the one who added it OR we trust reaction removal events?
+                 # Discord allows users to remove their OWN reactions. Admins can remove others.
+                 # If an admin removes the reaction, we should delete the event.
+                 # If the author removes it, we should delete the event.
+                 # We need to check if the user has permission to "manage" this event.
+                 # Similar logic to add: Admin or Author.
+                try:
+                     member = await channel.guild.fetch_member(payload.user_id)
+                     message = await channel.fetch_message(payload.message_id)
+
+                     is_admin = member and self.admin_role_id in [role.id for role in member.roles]
+                     is_author = message.author.id == payload.user_id
+
+                     if is_admin or is_author:
+                         calendar_event_id = self.calendar_events[str(payload.message_id)]
+                         await self.scheduler.vrchat_api.delete_group_calendar_event(calendar_event_id)
+                         del self.calendar_events[str(payload.message_id)]
+                         self.save_state()
+                         await channel.send("カレンダーイベントを削除しました。")
+                except Exception as e:
+                    logger.error(f"Error removing calendar event: {e}")
+
+        # Case: Removal of Approval reaction
+        elif str(payload.emoji) == self.approval_emoji:
+            message = await channel.fetch_message(payload.message_id)
+            if not message:
+                return
                 
-                # Clean up tracking - keep in pending_requests but clear scheduled message ID
-                if str(message.id) in self.queued_announcements:
-                    self.queued_announcements.remove(str(message.id))
-                self.pending_requests[str(message.id)] = None
-                
-                self.save_state()
-                await message.reply(Messages.Discord.BOOKING_CANCELLED)
+            # Check if there are any approval reactions left
+            approval_reactions = [r for r in message.reactions if str(r.emoji) == self.approval_emoji]
+            if not approval_reactions or approval_reactions[0].count == 0:
+                # Cancel the job and delete the scheduled message
+                if self.scheduler.cancel_job_by_message_id(str(message.id)):
+                    scheduled_msg_id = self.pending_requests.get(str(message.id))
+                    if scheduled_msg_id:
+                        try:
+                            scheduled_msg = await channel.fetch_message(scheduled_msg_id)
+                            if scheduled_msg:
+                                await scheduled_msg.delete()
+                        except Exception as e:
+                            logger.error(Messages.Log.SCHEDULED_MSG_DELETE_ERROR.format(e))
+
+                    # Also delete calendar event if exists
+                    if str(message.id) in self.calendar_events:
+                        calendar_event_id = self.calendar_events[str(message.id)]
+                        await self.scheduler.vrchat_api.delete_group_calendar_event(calendar_event_id)
+                        del self.calendar_events[str(message.id)]
+                        await channel.send("予約キャンセルに伴い、カレンダーイベントも削除しました。")
+
+                    # Clean up tracking - keep in pending_requests but clear scheduled message ID
+                    if str(message.id) in self.queued_announcements:
+                        self.queued_announcements.remove(str(message.id))
+                    self.pending_requests[str(message.id)] = None
+
+                    self.save_state()
+                    await message.reply(Messages.Discord.BOOKING_CANCELLED)
 
     async def _process_immediate_post(self, request_msg_id, channel_id, processing_msg_id):
         """Process an immediate post request"""
@@ -374,10 +474,12 @@ class AnnouncementCog(commands.Cog):
                 
             # Schedule the announcement
             job_id = await self.scheduler.schedule_announcement(
-                result["timestamp"],
+                result["announcement_timestamp"],
                 result["title"],
                 result["content"],
-                str(message.id)
+                str(message.id),
+                event_start_timestamp=result["event_start_timestamp"],
+                event_end_timestamp=result["event_end_timestamp"]
             )
             
             # Create confirmation embed
@@ -385,7 +487,10 @@ class AnnouncementCog(commands.Cog):
                 title=Messages.Discord.BOOKING_COMPLETED_TITLE,
                 color=discord.Color.green()
             )
-            embed.add_field(name=Messages.Discord.FIELD_POST_TIME, value=f"<t:{int(result['timestamp'])}:F>", inline=False)
+            embed.add_field(name="告知予定時刻", value=f"<t:{int(result['announcement_timestamp'])}:F>", inline=False)
+            embed.add_field(name="イベント開始", value=f"<t:{int(result['event_start_timestamp'])}:F>", inline=False)
+            embed.add_field(name="イベント終了", value=f"<t:{int(result['event_end_timestamp'])}:F>", inline=False)
+
             embed.add_field(name=Messages.Discord.FIELD_TITLE, value=result["title"], inline=False)
             
             content = result["content"]
@@ -402,6 +507,9 @@ class AnnouncementCog(commands.Cog):
             self.pending_requests[str(message.id)] = str(processing_msg.id)
             self.queued_announcements.add(str(message.id))
             
+            # Add calendar reaction for quick access
+            await message.add_reaction(self.calendar_emoji)
+
             self.save_state()
 
         except Exception as e:
