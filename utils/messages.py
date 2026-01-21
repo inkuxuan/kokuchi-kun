@@ -102,7 +102,7 @@ class Messages:
 
         # Calendar
         CALENDAR_MISSING_TIME = "エラー：イベントの開始時刻または終了時刻が見つかりません。"
-        CALENDAR_CREATED = "VRChatイベントカレンダーを作成しました \n {}"
+        CALENDAR_CREATED = "VRChatイベントカレンダーを作成しました \n <{}>"
         CALENDAR_CREATE_FAIL = "カレンダーイベントの作成に失敗しました: {}"
         CALENDAR_DELETED = "カレンダーイベントを削除しました。"
         CALENDAR_DELETED_WITH_CANCEL = "予約キャンセルに伴い、カレンダーイベントも削除しました。"
