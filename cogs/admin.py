@@ -3,8 +3,8 @@ from discord.ext import commands
 from discord import app_commands
 import logging
 from typing import Optional
-import tomli
 from utils.messages import Messages
+from utils.version import get_version
 
 logger = logging.getLogger(__name__)
 
@@ -16,15 +16,7 @@ class AdminCog(commands.Cog):
         self.channel_ids = config['discord']['channel_ids']  # List of channel IDs to monitor
         self.admin_role_id = config['discord']['admin_role_id']
         self.prefix = config['discord']['prefix']
-        
-        # Load version from pyproject.toml
-        try:
-            with open('pyproject.toml', 'rb') as f:
-                pyproject = tomli.load(f)
-                self.version = pyproject['project']['version']
-        except Exception as e:
-            logger.error(Messages.Log.VERSION_LOAD_FAIL.format(e))
-            self.version = "unknown"
+        self.version = get_version()
     
     async def cog_check(self, ctx):
         """Permission check that applies to all commands in this cog"""
