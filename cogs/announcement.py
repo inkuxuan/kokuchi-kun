@@ -53,6 +53,10 @@ class AnnouncementCog(commands.Cog):
                 if message_id in self.queued_announcements:
                     self.queued_announcements.remove(message_id)
 
+                # Remove from pending requests (request complete)
+                if message_id in self.pending_requests:
+                    del self.pending_requests[message_id]
+
                 # Save state
                 self.save_state()
                 logger.info(f"Job completed and saved to history: {message_id}")
@@ -89,6 +93,9 @@ class AnnouncementCog(commands.Cog):
         try:
             # Load state
             restored_jobs, pending_count, skipped_jobs = self.load_state()
+
+            # Immediately save state to clean up any skipped jobs from jobs.json
+            self.save_state()
 
             # Send restoration message
             channel = self.bot.get_channel(self.channel_ids[0])

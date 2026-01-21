@@ -66,6 +66,9 @@ class TestCogs:
         processor.process_announcement = AsyncMock(return_value={
             'success': True,
             'timestamp': 4102444800, # 2100-01-01 00:00:00
+            'announcement_timestamp': 4102444800,
+            'event_start_timestamp': 4102444800 + 3600,
+            'event_end_timestamp': 4102444800 + 7200,
             'title': 'AI Processed Title',
             'content': 'AI processed content for VRChat announcement',
             'formatted_date_time': '2100-01-01 00:00:00'
@@ -259,6 +262,7 @@ class TestCogs:
         announcement_cog.persistence.load_data.side_effect = [
             {'123': None}, # pending.json
             ['456'],       # history.json
+            {},            # calendar_events.json
             [{'id': 'job1', 'timestamp': 1000}] # jobs.json
         ]
         
@@ -274,7 +278,10 @@ class TestCogs:
         await announcement_cog.on_ready()
         
         # Verify load_data calls
-        assert announcement_cog.persistence.load_data.call_count == 3
+        assert announcement_cog.persistence.load_data.call_count == 4
+
+        # Verify save_state was called (to clean up skipped jobs)
+        announcement_cog.persistence.save_data.assert_called()
         
         # Verify scheduler restoration call
         announcement_cog.scheduler.restore_jobs.assert_called_once()
@@ -354,6 +361,9 @@ class TestCogs:
         announcement_cog.ai_processor.process_announcement.return_value = {
             "success": True,
             "timestamp": recent_past_time,
+            "announcement_timestamp": recent_past_time,
+            "event_start_timestamp": recent_past_time + 3600,
+            "event_end_timestamp": recent_past_time + 7200,
             "title": "Test Title",
             "content": "Test Content"
         }
