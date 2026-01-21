@@ -90,6 +90,13 @@ class AIProcessor:
                 event_end_dt = event_start_dt + timedelta(hours=1)
                 event_end_timestamp = int(event_end_dt.timestamp())
 
+            # Extract title and event_title, applying truncation
+            title = parsed_response["title"][:128]
+            event_title = parsed_response.get("event_title", title)
+            if not event_title: # Handle empty string case
+                 event_title = title
+            event_title = event_title[:128]
+
             return {
                 "success": True,
                 "timestamp": announcement_timestamp, # Kept for backward compatibility logic in cog
@@ -97,7 +104,8 @@ class AIProcessor:
                 "event_start_timestamp": event_start_timestamp,
                 "event_end_timestamp": event_end_timestamp,
                 "formatted_date_time": ann_dt.strftime('%Y年%m月%d日 %H:%M'),
-                "title": parsed_response["title"],
+                "title": title,
+                "event_title": event_title,
                 "content": parsed_response["content"]
             }
             

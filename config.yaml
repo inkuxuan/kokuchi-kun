@@ -27,6 +27,7 @@ openrouter:
       - event_end_date: 告知内容から抽出されたイベントの終了「日付」 (YYYY-MM-DD)（記載がない場合はnull）
       - event_end_time: 告知内容から抽出されたイベントの終了「時刻」 (HH:MM)（記載がない場合はnull）
       - title: 告知のタイトル（そのまま入れること）
+      - event_title: 告知のタイトルから抽出された、イベント自体の名称（例：「手話教室」開催のお知らせ → 手話教室）。抽出できない場合はタイトルと同じにする。
       - content: 告知の本文（イベント開始・終了日付などを含め、そのまま入れること）
 
     2. 注意事項：
@@ -44,6 +45,7 @@ openrouter:
       "event_end_date": "YYYY-MM-DD",
       "event_end_time": "HH:MM",
       "title": "タイトル",
+      "event_title": "イベント名",
       "content": "内容"
     }
 
