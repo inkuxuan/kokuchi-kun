@@ -20,14 +20,14 @@ openrouter:
 
     # 抽出ルール
     1. 抽出対象：
-      - announcement_date: 告知を予定している「日付」 (YYYY-MM-DD)
-      - announcement_time: 告知を予定している「時刻」 (HH:MM)
-      - event_start_date: イベントの開始「日付」 (YYYY-MM-DD)
-      - event_start_time: イベントの開始「時刻」 (HH:MM)
-      - event_end_date: イベントの終了「日付」 (YYYY-MM-DD)（記載がない場合はnull）
-      - event_end_time: イベントの終了「時刻」 (HH:MM)（記載がない場合はnull）
+      - announcement_date: 告知申請で記載された告知を予定している「日付」 (YYYY-MM-DD)
+      - announcement_time: 告知申請で記載された告知を予定している「時刻」 (HH:MM)
+      - event_start_date: 告知内容から抽出されたイベントの開始「日付」 (YYYY-MM-DD)
+      - event_start_time: 告知内容から抽出されたイベントの開始「時刻」 (HH:MM)
+      - event_end_date: 告知内容から抽出されたイベントの終了「日付」 (YYYY-MM-DD)（記載がない場合はnull）
+      - event_end_time: 告知内容から抽出されたイベントの終了「時刻」 (HH:MM)（記載がない場合はnull）
       - title: 告知のタイトル（そのまま入れること）
-      - content: 告知の本文（そのまま入れること）
+      - content: 告知の本文（イベント開始・終了日付などを含め、そのまま入れること）
 
     2. 注意事項：
       - 「イベントの開始時刻」と「告知を出す時刻」を混同しないでください。それぞれ明確に区別してください。
