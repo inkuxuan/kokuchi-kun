@@ -28,5 +28,7 @@ When making a PR, make sure to include changes in `pyproject.toml`, `lock.uv` an
 
 Test codes should always be committed and included in the PR
 
-##
+# Coding Guidelines
 
+- Messages sent by the bot should be stored as constants in `utils/messages.py`
+- Logs can be literals
