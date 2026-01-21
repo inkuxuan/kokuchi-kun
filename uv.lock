@@ -1795,7 +1795,7 @@ requires-dist = [
     { name = "pytz", specifier = ">=2025.2" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "tomli", specifier = ">=2.2.1" },
-    { name = "vrchatapi", specifier = ">=1.19.2" },
+    { name = "vrchatapi", specifier = "==1.20.7" },
 ]
 provides-extras = ["dev"]
 
@@ -1807,7 +1807,7 @@ dev = [
 
 [[package]]
 name = "vrchatapi"
-version = "1.19.2"
+version = "1.20.7"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "python-dateutil" },
@@ -1815,9 +1815,9 @@ dependencies = [
     { name = "urllib3", version = "2.2.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
     { name = "urllib3", version = "2.3.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.9'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/79/58/213331be0a17075b7ac12b07a5fb6662919f34f2c832df7dd053b58577d8/vrchatapi-1.19.2.tar.gz", hash = "sha256:2b0801fff24554fead9cfbfa365ee05952a7c9e63e5875dcc2408d8350d868b8", size = 235674, upload-time = "2025-04-18T08:58:46.199Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/be/e1/acc6d3015c6792fdb1d1f5ab9e2bb3c3bd3504be4947a491385fb9be5812/vrchatapi-1.20.7.tar.gz", hash = "sha256:3dda81427fd99b78800978f5de65c72495dfe94b2a4cacf21349606303627720", size = 335380, upload-time = "2026-01-01T22:26:08.097Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/59/3b/d9549a6aeaa5cfb15f220c179fd0d197cbd12de79f73ede9f9dbbb08a6e0/vrchatapi-1.19.2-py3-none-any.whl", hash = "sha256:5e47a4340a40559ded7864d13019400e8a4bd625512f489f01f2836cadfb57f1", size = 500126, upload-time = "2025-04-18T08:58:44.834Z" },
+    { url = "https://files.pythonhosted.org/packages/e3/fc/6b9cac17edae6d18c33704f90d07e4be628d7b1eac9598d7a59a244f3f12/vrchatapi-1.20.7-py3-none-any.whl", hash = "sha256:9cf246b300fb5154a8d7b5cb251255dac5d044ac41d63ca3469c5b680b431c2b", size = 718914, upload-time = "2026-01-01T22:26:06.408Z" },
 ]
 
 [[package]]

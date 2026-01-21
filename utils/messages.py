@@ -21,6 +21,10 @@ class Messages:
         ANNOUNCEMENT_REQUEST_ERROR = "Error handling announcement request: {}"
         SCHEDULED_MSG_DELETE_ERROR = "Error deleting scheduled message: {}"
         APPROVED_ANNOUNCEMENT_ERROR = "Error processing approved announcement: {}"
+        CALENDAR_EVENT_DELETE_ERROR = "Error removing calendar event: {}"
+        CALENDAR_EVENT_CREATE_WARNING = "No job found for message {} when creating calendar event"
+        CALENDAR_EVENT_CREATE_EXCEPTION = "Exception in calendar event creation: {}"
+        CALENDAR_EVENT_CREATE_FAIL = "Failed to create calendar event: {}"
 
         # cogs/admin.py
         VERSION_LOAD_FAIL = "Failed to load version from pyproject.toml: {}"
@@ -87,7 +91,7 @@ class Messages:
         FIELD_CONTENT = "内容"
         FIELD_JOB_ID = "ジョブID"
         FIELD_HINTS = "ヒント"
-        FIELD_HINTS_CONTENTS = "このメッセージに⏩ (fast-forward) リアクションで告知を即時投稿できます(本人OR管理ロール限定)。\n元メッセージを削除する、または管理ロールのリアクションを消すと予約キャンセルできます。"
+        FIELD_HINTS_CONTENTS = "このメッセージに⏩ (fast-forward) リアクションで告知を即時投稿できます; 📅(calendar) リアクションでVRCカレンダー登録できます(本人OR管理ロール限定)。\n元メッセージを削除する、または管理ロールのリアクションを消すと予約キャンセルできます。"
         PROCESSING_ERROR = "告知の処理中にエラーが発生しました: {}"
         IMMEDIATE_POST_SUCCESS = "告知を即時投稿しました"
         IMMEDIATE_POST_FAIL = "即時投稿に失敗しました: {}"
@@ -95,6 +99,13 @@ class Messages:
         PAST_TIME_WARNING = "{mentions} 予約された告知の時刻は既に過ぎています、ご確認の上、再度予約してください。"
         RESTORATION_STATS = "{} pending, {} booked announcements restored"
         SKIPPED_JOBS = "⚠️ Skipped {} announcements that were scheduled while offline:\n{}"
+
+        # Calendar
+        CALENDAR_MISSING_TIME = "エラー：イベントの開始時刻または終了時刻が見つかりません。"
+        CALENDAR_CREATED = "VRChatイベントカレンダーを作成しました \n {}"
+        CALENDAR_CREATE_FAIL = "カレンダーイベントの作成に失敗しました: {}"
+        CALENDAR_DELETED = "カレンダーイベントを削除しました。"
+        CALENDAR_DELETED_WITH_CANCEL = "予約キャンセルに伴い、カレンダーイベントも削除しました。"
 
         # Admin Cog
         NO_SCHEDULED_JOBS = "予約されている告知はありません。"
@@ -111,6 +122,8 @@ class Messages:
     class Error:
         # AI Processor
         AI_ERROR = "AI処理中にエラーが発生しました。{}"
+        AI_ANNOUNCEMENT_TIME_FAIL = "告知時刻の抽出が失敗しました。"
+        AI_EVENT_TIME_FAIL = "イベント開始時刻の抽出が失敗しました。"
 
         # VRChat API
         API_CLIENT_NOT_INIT = "API client not initialized"
