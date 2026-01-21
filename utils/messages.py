@@ -92,6 +92,7 @@ class Messages:
         IMMEDIATE_POST_SUCCESS = "告知を即時投稿しました"
         IMMEDIATE_POST_FAIL = "即時投稿に失敗しました: {}"
         IMMEDIATE_POST_EXECUTED = "この告知は即時投稿されました。"
+        PAST_TIME_WARNING = "{mentions} 予約された告知の時刻は既に過ぎています、ご確認ください"
         RESTORATION_STATS = "{} pending, {} booked announcements restored"
         SKIPPED_JOBS = "⚠️ Skipped {} announcements that were scheduled while offline:\n{}"
 
