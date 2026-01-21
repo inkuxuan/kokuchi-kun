@@ -36,7 +36,8 @@ class Scheduler:
             'date',
             run_date=run_date,
             args=[job_id, title, content],
-            id=job_id
+            id=job_id,
+            misfire_grace_time=3600  # Allow execution up to 1 hour late (immediate post for recent past)
         )
         
         # Store job info
