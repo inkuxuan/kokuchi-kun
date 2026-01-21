@@ -516,6 +516,9 @@ class AnnouncementCog(commands.Cog):
             # Add calendar reaction for quick access
             await processing_msg.add_reaction(self.calendar_emoji)
 
+            # Add fast forward reaction for quick access
+            await processing_msg.add_reaction(self.fast_forward_emoji)
+
             self.save_state()
 
         except Exception as e:
