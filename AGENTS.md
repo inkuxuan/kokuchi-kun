@@ -22,7 +22,7 @@ Whenever you need to run a python-related commands, run it like
 uv run pytest
 ```
 
-When making a PR, make sure to include changes in `pyproject.toml` and `requirements.txt` if you installed or updated packages.
+When making a PR, make sure to include changes in `pyproject.toml`, `lock.uv` and `requirements.txt` if you installed or updated packages.
 
 ## Test codes
 
