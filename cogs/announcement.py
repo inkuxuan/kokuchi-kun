@@ -297,7 +297,7 @@ class AnnouncementCog(commands.Cog):
                 return
 
             # Retrieve event details from job
-            title = job['title']
+            title = job.get('event_title', job['title'])
             content = job['content']
             start_at = job.get('event_start_timestamp')
             end_at = job.get('event_end_timestamp')
@@ -495,7 +495,8 @@ class AnnouncementCog(commands.Cog):
                 result["content"],
                 str(message.id),
                 event_start_timestamp=result["event_start_timestamp"],
-                event_end_timestamp=result["event_end_timestamp"]
+                event_end_timestamp=result["event_end_timestamp"],
+                event_title=result.get("event_title")
             )
             
             # Create confirmation embed

@@ -23,7 +23,7 @@ class Scheduler:
         """Set callback for job completion (success or failure)"""
         self.on_job_completion = callback
         
-    async def schedule_announcement(self, timestamp, title, content, message_id, event_start_timestamp=None, event_end_timestamp=None):
+    async def schedule_announcement(self, timestamp, title, content, message_id, event_start_timestamp=None, event_end_timestamp=None, event_title=None):
         """Schedule an announcement for the given timestamp"""
         job_id = str(uuid.uuid4())
         run_date = datetime.fromtimestamp(timestamp, tz=pytz.utc)
@@ -41,6 +41,9 @@ class Scheduler:
         )
         
         # Store job info
+        if event_title is None:
+            event_title = title
+
         self.jobs[job_id] = {
             'id': job_id,
             'message_id': message_id,
@@ -49,6 +52,7 @@ class Scheduler:
             'event_end_timestamp': event_end_timestamp,
             'formatted_date_time': datetime.fromtimestamp(timestamp).strftime('%Y年%m月%d日 %H:%M'),
             'title': title,
+            'event_title': event_title,
             'content': content,
             'status': 'pending'  # pending, success, failed
         }
@@ -122,6 +126,9 @@ class Scheduler:
                 )
 
                 # Restore to jobs dict
+                if 'event_title' not in job_data:
+                    job_data['event_title'] = job_data['title']
+
                 self.jobs[job_id] = job_data
                 restored_count += 1
                 logger.info(f"Restored job {job_id} scheduled for {run_date}")

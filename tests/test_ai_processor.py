@@ -41,6 +41,7 @@ async def test_process_announcement_success(ai_processor):
         assert result['success'] is True
         assert result['title'] == "Test Event"
         assert result['content'] == "Test Content"
+        assert result['event_title'] == "Test Event" # Fallback check
 
         # Verify timestamps (approximate check due to timezone complexity in test env vs implementation)
         # Just check relative order
@@ -54,6 +55,62 @@ async def test_process_announcement_success(ai_processor):
         jst = pytz.timezone('Asia/Tokyo')
         ann_dt = jst.localize(datetime(2023, 10, 27, 20, 0))
         assert result['announcement_timestamp'] == int(ann_dt.timestamp())
+
+@pytest.mark.asyncio
+async def test_process_announcement_with_event_title(ai_processor):
+    # Mock OpenAI response with event_title
+    mock_response = MagicMock()
+    mock_response.choices[0].message.content = '''
+    {
+      "announcement_date": "2023-10-27",
+      "announcement_time": "20:00",
+      "event_start_date": "2023-10-28",
+      "event_start_time": "21:00",
+      "event_end_date": "2023-10-28",
+      "event_end_time": "22:00",
+      "title": "Application Title",
+      "event_title": "Event Title",
+      "content": "Test Content"
+    }
+    '''
+
+    with patch('openai.resources.chat.completions.AsyncCompletions.create', new_callable=AsyncMock) as mock_create:
+        mock_create.return_value = mock_response
+
+        result = await ai_processor.process_announcement("Test message")
+
+        assert result['success'] is True
+        assert result['title'] == "Application Title"
+        assert result['event_title'] == "Event Title"
+
+@pytest.mark.asyncio
+async def test_process_announcement_truncation(ai_processor):
+    # Mock OpenAI response with long titles
+    long_title = "A" * 150
+    long_event_title = "B" * 150
+    mock_response = MagicMock()
+    mock_response.choices[0].message.content = f'''
+    {{
+      "announcement_date": "2023-10-27",
+      "announcement_time": "20:00",
+      "event_start_date": "2023-10-28",
+      "event_start_time": "21:00",
+      "title": "{long_title}",
+      "event_title": "{long_event_title}",
+      "content": "Test Content"
+    }}
+    '''
+
+    with patch('openai.resources.chat.completions.AsyncCompletions.create', new_callable=AsyncMock) as mock_create:
+        mock_create.return_value = mock_response
+
+        result = await ai_processor.process_announcement("Test message")
+
+        assert result['success'] is True
+        assert len(result['title']) == 128
+        assert len(result['event_title']) == 128
+        assert result['title'] == "A" * 128
+        assert result['event_title'] == "B" * 128
 
 @pytest.mark.asyncio
 async def test_process_announcement_missing_end_time(ai_processor):
