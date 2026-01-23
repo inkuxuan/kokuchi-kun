@@ -53,6 +53,10 @@ class AnnouncementCog(commands.Cog):
                 if message_id in self.queued_announcements:
                     self.queued_announcements.remove(message_id)
 
+                # Remove from pending requests (request complete)
+                if message_id in self.pending_requests:
+                    del self.pending_requests[message_id]
+
                 # Save state
                 self.save_state()
                 logger.info(f"Job completed and saved to history: {message_id}")
@@ -89,6 +93,9 @@ class AnnouncementCog(commands.Cog):
         try:
             # Load state
             restored_jobs, pending_count, skipped_jobs = self.load_state()
+
+            # Immediately save state to clean up any skipped jobs from jobs.json
+            self.save_state()
 
             # Send restoration message
             channel = self.bot.get_channel(self.channel_ids[0])
@@ -290,7 +297,7 @@ class AnnouncementCog(commands.Cog):
                 return
 
             # Retrieve event details from job
-            title = job['title']
+            title = job.get('event_title', job['title'])
             content = job['content']
             start_at = job.get('event_start_timestamp')
             end_at = job.get('event_end_timestamp')
@@ -357,11 +364,14 @@ class AnnouncementCog(commands.Cog):
                      is_author = request_message.author.id == payload.user_id
 
                      if is_admin or is_author:
-                         calendar_event_id = self.calendar_events[str(request_msg_id)]
-                         await self.scheduler.vrchat_api.delete_group_calendar_event(calendar_event_id)
-                         del self.calendar_events[str(request_msg_id)]
-                         self.save_state()
-                         await channel.send(Messages.Discord.CALENDAR_DELETED)
+                        calendar_event_id = self.calendar_events[str(request_msg_id)]
+                        result = await self.scheduler.vrchat_api.delete_group_calendar_event(calendar_event_id)
+                        del self.calendar_events[str(request_msg_id)]
+                        self.save_state()
+                        if result['success']:
+                            await channel.send(Messages.Discord.CALENDAR_DELETED)
+                        else:
+                            await channel.send(result['error'])
                 except Exception as e:
                     logger.error(Messages.Log.CALENDAR_EVENT_DELETE_ERROR.format(e))
 
@@ -485,7 +495,8 @@ class AnnouncementCog(commands.Cog):
                 result["content"],
                 str(message.id),
                 event_start_timestamp=result["event_start_timestamp"],
-                event_end_timestamp=result["event_end_timestamp"]
+                event_end_timestamp=result["event_end_timestamp"],
+                event_title=result.get("event_title")
             )
             
             # Create confirmation embed
