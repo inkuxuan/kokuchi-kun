@@ -8,6 +8,7 @@ import pytz
 from vrchatapi.api.authentication_api import AuthenticationApi
 from vrchatapi.api.groups_api import GroupsApi
 from vrchatapi.exceptions import UnauthorizedException, ApiException
+from vrchatapi.models.create_calendar_event_request import CreateCalendarEventRequest
 from vrchatapi.models.two_factor_auth_code import TwoFactorAuthCode
 from vrchatapi.models.two_factor_email_code import TwoFactorEmailCode
 from utils.messages import Messages
@@ -355,18 +356,22 @@ class VRChatAPI:
 
             logger.info(f"Creating calendar event: {title} ({start_at} - {end_at})")
 
+            request = CreateCalendarEventRequest(
+                access_type=CalendarEventAccess.PUBLIC,
+                category=CalendarEventCategory.OTHER,
+                title=title,
+                description=content,
+                starts_at=start_at,
+                ends_at=end_at,
+                featured=False,
+                image_id=None,
+                is_draft=False,
+                send_creation_notification=False,
+            )
+
             event = calendar_api.create_group_calendar_event(
                 group_id=self.group_id,
-                create_calendar_event_request={
-                    "title": title,
-                    "description": content,
-                    "startsAt": start_at,
-                    "endsAt": end_at,
-                    "visibility": "public", # Use string "public" or CalendarEventAccess.PUBLIC which is "public"
-                    "accessType": CalendarEventAccess.PUBLIC,
-                    "category": CalendarEventCategory.OTHER,
-                    "sendCreationNotification": False
-                }
+                create_calendar_event_request=request
             )
 
             return {
