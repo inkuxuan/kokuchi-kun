@@ -1,6 +1,6 @@
 [project]
 name = "vrchat-announce-bot"
-version = "2.1.1"
+version = "2.1.2"
 
 description = "Discord bot to schedule VRChat group announcements"
 readme = "README.md"
