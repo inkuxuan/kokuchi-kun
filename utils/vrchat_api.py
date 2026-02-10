@@ -231,41 +231,45 @@ class VRChatAPI:
             except UnauthorizedException as e:
                 # Handle 2FA if needed
                 if e.status == 200:
+                    otp_type = None
+                    verify_method = None
+
                     if "Email 2 Factor Authentication" in e.reason:
-                        # Request OTP through callback
-                        if not self.otp_callback:
-                            return {"success": False, "error": Messages.Error.OTP_CALLBACK_NOT_SET}
-                            
-                        otp = await self.otp_callback("Email 2FA")
-                        if not otp:
-                            return {"success": False, "error": Messages.Error.NO_OTP_PROVIDED}
-                            
-                        try:
-                            auth_api.verify2_fa_email_code(
-                                two_factor_email_code=TwoFactorEmailCode(code=otp)
-                            )
-                            logger.info(Messages.Log.EMAIL_2FA_SUCCESS)
-                        except Exception as e2:
-                            logger.error(Messages.Log.EMAIL_2FA_FAIL.format(str(e2)))
-                            return {"success": False, "error": Messages.Error.EMAIL_2FA_FAIL.format(str(e2))}
-                            
+                        otp_type = "Email 2FA"
+                        verify_method = auth_api.verify2_fa_email_code
                     elif "2 Factor Authentication" in e.reason:
-                        # Request OTP through callback
+                        otp_type = "TOTP 2FA"
+                        verify_method = auth_api.verify2_fa
+
+                    if otp_type:
+                        # Request OTP through callback with retry loop
                         if not self.otp_callback:
                             return {"success": False, "error": Messages.Error.OTP_CALLBACK_NOT_SET}
-                            
-                        otp = await self.otp_callback("TOTP 2FA")
-                        if not otp:
-                            return {"success": False, "error": Messages.Error.NO_OTP_PROVIDED}
-                            
-                        try:
-                            auth_api.verify2_fa(
-                                two_factor_auth_code=TwoFactorAuthCode(code=otp)
-                            )
-                            logger.info(Messages.Log.TOTP_2FA_SUCCESS)
-                        except Exception as e2:
-                            logger.error(Messages.Log.TOTP_2FA_FAIL.format(str(e2)))
-                            return {"success": False, "error": Messages.Error.TOTP_2FA_FAIL.format(str(e2))}
+
+                        while True:
+                            otp = await self.otp_callback(otp_type)
+                            if not otp:
+                                return {"success": False, "error": Messages.Error.NO_OTP_PROVIDED}
+
+                            try:
+                                if otp_type == "Email 2FA":
+                                    verify_method(two_factor_email_code=TwoFactorEmailCode(code=otp))
+                                else:
+                                    verify_method(two_factor_auth_code=TwoFactorAuthCode(code=otp))
+
+                                logger.info(Messages.Log.TOTP_2FA_SUCCESS if otp_type == "TOTP 2FA" else Messages.Log.EMAIL_2FA_SUCCESS)
+                                break # Success, exit loop
+                            except ApiException as e2:
+                                if e2.status == 400:
+                                    logger.warning(Messages.Log.TOTP_INVALID)
+                                    # Continue loop to ask again
+                                    continue
+                                else:
+                                    logger.error(Messages.Log.TOTP_2FA_FAIL.format(str(e2)) if otp_type == "TOTP 2FA" else Messages.Log.EMAIL_2FA_FAIL.format(str(e2)))
+                                    return {"success": False, "error": Messages.Error.TOTP_2FA_FAIL.format(str(e2)) if otp_type == "TOTP 2FA" else Messages.Error.EMAIL_2FA_FAIL.format(str(e2))}
+                            except Exception as e2:
+                                logger.error(Messages.Log.TOTP_2FA_FAIL.format(str(e2)) if otp_type == "TOTP 2FA" else Messages.Log.EMAIL_2FA_FAIL.format(str(e2)))
+                                return {"success": False, "error": Messages.Error.TOTP_2FA_FAIL.format(str(e2)) if otp_type == "TOTP 2FA" else Messages.Error.EMAIL_2FA_FAIL.format(str(e2))}
                     
                     # Try again after 2FA
                     try:
@@ -297,6 +301,33 @@ class VRChatAPI:
         """Public method to authenticate or re-authenticate"""
         return await self._authenticate()
     
+    async def check_auth_status(self):
+        """Check if the current session is valid"""
+        if not self.api_client:
+             return {"success": False, "error": Messages.Error.API_CLIENT_NOT_INIT}
+
+        try:
+            logger.info(Messages.Log.HEARTBEAT_CHECK)
+            auth_api = AuthenticationApi(self.api_client)
+            self.current_user = auth_api.get_current_user()
+            self.authenticated = True
+            logger.info(Messages.Log.HEARTBEAT_SUCCESS)
+            return {"success": True}
+        except UnauthorizedException:
+            logger.warning(Messages.Log.HEARTBEAT_FAIL.format("Unauthorized"))
+            # Trigger re-auth
+            logger.info(Messages.Log.REAUTH_TRIGGERED.format("Heartbeat"))
+            result = await self._authenticate()
+            if result['success']:
+                logger.info(Messages.Log.HEARTBEAT_REAUTH_SUCCESS)
+                return {"success": True, "reauthenticated": True}
+            else:
+                logger.error(Messages.Log.HEARTBEAT_REAUTH_FAIL.format(result.get('error')))
+                return result
+        except Exception as e:
+             logger.error(Messages.Log.HEARTBEAT_FAIL.format(e))
+             return {"success": False, "error": str(e)}
+
     async def post_announcement(self, title, content):
         """Post in the group with notification"""
         if not self.authenticated or not self.api_client:
@@ -322,13 +353,38 @@ class VRChatAPI:
                 "group_post": group_post
             }
         except UnauthorizedException as e:
-            logger.error(Messages.Log.POST_AUTH_ERROR.format(e))
-            # Add to failed posts for retry
-            self.failed_posts.append({
-                "title": title,
-                "content": content
-            })
-            return {"success": False, "error": Messages.Error.AUTH_FAIL_RETRY}
+            logger.warning(Messages.Log.POST_AUTH_ERROR.format(e))
+            logger.info(Messages.Log.REAUTH_TRIGGERED.format("Post Announcement"))
+
+            # Try re-auth
+            auth_result = await self._authenticate()
+            if auth_result['success']:
+                # Retry the post ONCE
+                try:
+                    # Create groups API instance again (in case client changed? client shouldn't change, but safer)
+                    groups_api = GroupsApi(self.api_client)
+                    group_post = groups_api.add_group_post(
+                        group_id=self.group_id,
+                        create_group_post_request={
+                            "title": title,
+                            "text": content,
+                            "sendNotification": True
+                        }
+                    )
+                    return {
+                        "success": True,
+                        "group_post": group_post
+                    }
+                except Exception as retry_e:
+                     logger.error(Messages.Log.POST_ERROR.format(retry_e))
+                     return {"success": False, "error": str(retry_e)}
+            else:
+                # Add to failed posts for retry if re-auth failed
+                self.failed_posts.append({
+                    "title": title,
+                    "content": content
+                })
+                return {"success": False, "error": Messages.Error.AUTH_FAIL_RETRY}
         except Exception as e:
             logger.error(Messages.Log.POST_ERROR.format(e))
             return {"success": False, "error": str(e)}
@@ -351,18 +407,18 @@ class VRChatAPI:
             if isinstance(end_at, (int, float)):
                 end_at = datetime.fromtimestamp(end_at, tz=pytz.utc)
             
-            start_at = start_at.strftime('%Y-%m-%dT%H:%M:%SZ')
-            end_at = end_at.strftime('%Y-%m-%dT%H:%M:%SZ')
+            start_at_str = start_at.strftime('%Y-%m-%dT%H:%M:%SZ')
+            end_at_str = end_at.strftime('%Y-%m-%dT%H:%M:%SZ')
 
-            logger.info(f"Creating calendar event: {title} ({start_at} - {end_at})")
+            logger.info(f"Creating calendar event: {title} ({start_at_str} - {end_at_str})")
 
             request = CreateCalendarEventRequest(
                 access_type=CalendarEventAccess.PUBLIC,
                 category=CalendarEventCategory.OTHER,
                 title=title,
                 description=content,
-                starts_at=start_at,
-                ends_at=end_at,
+                starts_at=start_at_str,
+                ends_at=end_at_str,
                 featured=False,
                 image_id=None,
                 is_draft=False,
@@ -379,6 +435,31 @@ class VRChatAPI:
                 "event": event,
                 "event_id": event.id
             }
+
+        except UnauthorizedException as e:
+            logger.warning(f"Authentication error creating calendar event: {e}")
+            logger.info(Messages.Log.REAUTH_TRIGGERED.format("Create Calendar Event"))
+
+            auth_result = await self._authenticate()
+            if auth_result['success']:
+                try:
+                    from vrchatapi.api.calendar_api import CalendarApi
+                    calendar_api = CalendarApi(self.api_client)
+                    # Retry
+                    event = calendar_api.create_group_calendar_event(
+                        group_id=self.group_id,
+                        create_calendar_event_request=request
+                    )
+                    return {
+                        "success": True,
+                        "event": event,
+                        "event_id": event.id
+                    }
+                except Exception as retry_e:
+                    logger.error(f"Error creating calendar event after reauth: {retry_e}")
+                    return {"success": False, "error": str(retry_e)}
+            else:
+                return {"success": False, "error": Messages.Error.AUTH_FAIL_RETRY}
 
         except Exception as e:
             logger.error(f"Error creating calendar event: {e}")
@@ -401,6 +482,26 @@ class VRChatAPI:
             )
 
             return {"success": True}
+
+        except UnauthorizedException as e:
+            logger.warning(f"Authentication error deleting calendar event: {e}")
+            logger.info(Messages.Log.REAUTH_TRIGGERED.format("Delete Calendar Event"))
+
+            auth_result = await self._authenticate()
+            if auth_result['success']:
+                try:
+                    from vrchatapi.api.calendar_api import CalendarApi
+                    calendar_api = CalendarApi(self.api_client)
+                    calendar_api.delete_group_calendar_event(
+                        group_id=self.group_id,
+                        calendar_id=calendar_event_id
+                    )
+                    return {"success": True}
+                except Exception as retry_e:
+                    logger.error(f"Error deleting calendar event after reauth: {retry_e}")
+                    return {"success": False, "error": str(retry_e)}
+            else:
+                 return {"success": False, "error": Messages.Error.AUTH_FAIL_RETRY}
 
         except Exception as e:
             logger.error(f"Error deleting calendar event: {e}")
@@ -439,6 +540,10 @@ class VRChatAPI:
                 "success": True,
                 "message": "Post deleted successfully"
             }
+        except UnauthorizedException as e:
+             # Just fail for now or implement retry if needed. Usually delete is manual so user can retry.
+             logger.error(Messages.Log.DELETE_POST_ERROR.format(e))
+             return {"success": False, "error": str(e)}
         except Exception as e:  
             logger.error(Messages.Log.DELETE_POST_ERROR.format(e))
             return {"success": False, "error": str(e)}
