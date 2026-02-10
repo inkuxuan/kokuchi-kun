@@ -58,6 +58,7 @@ openrouter:
 
 vrchat:
   group_id: "grp_55712cfd-77ab-464f-8174-1483616c0c89"
+  heartbeat_interval: 60 # minutes
 
 
 # Other non-sensitive configuration can remain here
