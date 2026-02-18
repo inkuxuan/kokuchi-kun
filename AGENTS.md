@@ -79,6 +79,28 @@ Test codes should always be committed and included in the PR
 
 Single source of truth is the `version` field in `pyproject.toml`. Use `scripts/bump_version.py` to bump — it commits and tags automatically. Never manually edit the version.
 
+# Documentation
+
+End-user documentation lives in `docs/`. It is a [VitePress](https://vitepress.dev/) site with two locales:
+
+- `docs/index.md` — Japanese home page (default locale, served at `/`)
+- `docs/ja/` — Japanese pages
+- `docs/en/` — English pages (served at `/en/`)
+- `docs/.vitepress/config.mts` — VitePress configuration
+
+Node.js is required to work on the docs. Dependencies are declared in `package.json` at the repo root.
+
+```bash
+npm install       # first-time setup
+npm run docs:dev  # start local dev server at http://localhost:5173/vspc-bot/
+npm run docs:build   # build static site to docs/.vitepress/dist
+npm run docs:preview # preview the built site locally
+```
+
+The docs are deployed to GitHub Pages automatically via `.github/workflows/deploy-docs.yml` when changes to `docs/**` are pushed to `main`. The live site is at `https://inkuxuan.github.io/vspc-bot/`.
+
+Do **not** commit `node_modules/` or `docs/.vitepress/dist` — they are excluded in `.gitignore`.
+
 # Coding Guidelines
 
 - Messages sent by the bot should be stored as constants in `utils/messages.py`

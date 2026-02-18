@@ -29,3 +29,8 @@ wheels/
 .venv
 
 vrchat_session.json
+
+# Node.js / VitePress
+node_modules/
+docs/.vitepress/dist
+docs/.vitepress/cache
