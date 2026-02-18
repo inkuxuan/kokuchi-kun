@@ -70,10 +70,18 @@ class Messages:
         AUTH_API_ERROR = "API error during authentication: {}"
         AUTH_UNEXPECTED_ERROR = "Unexpected error during authentication: {}"
         ERROR_AFTER_2FA = "Error after 2FA: {}"
+        HEARTBEAT_CHECK = "Running heartbeat check for VRChat session"
+        HEARTBEAT_SUCCESS = "Heartbeat check successful"
+        HEARTBEAT_FAIL = "Heartbeat check failed: {}"
+        HEARTBEAT_REAUTH_SUCCESS = "Re-authentication triggered by heartbeat successful"
+        HEARTBEAT_REAUTH_FAIL = "Re-authentication triggered by heartbeat failed: {}"
+        REAUTH_TRIGGERED = "Re-authentication triggered by {}"
+        TOTP_INVALID = "Invalid TOTP code provided, asking again..."
 
     class Discord:
         # Shared
         OTP_REQUEST = "{role_mention} VRChatの認証に{otp_type}が必要です。認証コードを入力してください。"
+        OTP_INVALID = "認証コードが間違っています。もう一度入力してください。"
         OTP_REQUEST_EDITED = "VRChatの認証に{otp_type}が必要です。認証コードを入力してください。"
         OTP_TIMEOUT = "{role_mention} OTPリクエストがタイムアウトしました。"
         BOT_ONLINE = "Bot is online! 🟢"
