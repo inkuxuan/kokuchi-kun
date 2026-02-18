@@ -62,5 +62,8 @@ vrchat:
 
 firestore:
   server_id: "default"  # Identifier for this server's state in Firestore
+  servers_collection: "servers"  # Top-level collection for per-server state
+  shared_collection: "shared"    # Top-level collection for shared state (e.g. VRChat session)
+  state_subcollection: "state"   # Subcollection under each server document
 
 # Other non-sensitive configuration can remain here

@@ -5,20 +5,24 @@ logger = logging.getLogger(__name__)
 
 
 class Persistence:
-    def __init__(self, server_id='default'):
+    def __init__(self, server_id='default', servers_collection='servers',
+                 shared_collection='shared', state_subcollection='state'):
         self.server_id = server_id
+        self.servers_collection = servers_collection
+        self.shared_collection = shared_collection
+        self.state_subcollection = state_subcollection
         self.db = AsyncClient()
 
     async def save_data(self, key, data):
         """Save per-server state to Firestore.
 
-        Data is stored at servers/{server_id}/state/{key}.
+        Data is stored at {servers_collection}/{server_id}/{state_subcollection}/{key}.
         """
         try:
             doc_ref = (
-                self.db.collection('servers')
+                self.db.collection(self.servers_collection)
                 .document(self.server_id)
-                .collection('state')
+                .collection(self.state_subcollection)
                 .document(key)
             )
             await doc_ref.set({'data': data})
@@ -34,9 +38,9 @@ class Persistence:
 
         try:
             doc_ref = (
-                self.db.collection('servers')
+                self.db.collection(self.servers_collection)
                 .document(self.server_id)
-                .collection('state')
+                .collection(self.state_subcollection)
                 .document(key)
             )
             doc = await doc_ref.get()
@@ -50,10 +54,10 @@ class Persistence:
     async def save_shared(self, key, data):
         """Save shared state (not scoped to a server) to Firestore.
 
-        Data is stored at shared/{key}.
+        Data is stored at {shared_collection}/{key}.
         """
         try:
-            doc_ref = self.db.collection('shared').document(key)
+            doc_ref = self.db.collection(self.shared_collection).document(key)
             await doc_ref.set(data)
             return True
         except Exception as e:
@@ -66,7 +70,7 @@ class Persistence:
             default = {}
 
         try:
-            doc_ref = self.db.collection('shared').document(key)
+            doc_ref = self.db.collection(self.shared_collection).document(key)
             doc = await doc_ref.get()
             if doc.exists:
                 return doc.to_dict()

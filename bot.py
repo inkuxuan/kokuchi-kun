@@ -68,7 +68,12 @@ class VRChatAnnounceBot(commands.Bot):
         
         # Initialize components
         firestore_config = self.config.get('firestore', {})
-        self.persistence = Persistence(server_id=firestore_config.get('server_id', 'default'))
+        self.persistence = Persistence(
+            server_id=firestore_config.get('server_id', 'default'),
+            servers_collection=firestore_config.get('servers_collection', 'servers'),
+            shared_collection=firestore_config.get('shared_collection', 'shared'),
+            state_subcollection=firestore_config.get('state_subcollection', 'state'),
+        )
         self.vrchat_api = VRChatAPI(self.config['vrchat'], self.persistence)
         self.scheduler = Scheduler(self.vrchat_api)
         self.ai_processor = AIProcessor(self.config['openrouter'])
