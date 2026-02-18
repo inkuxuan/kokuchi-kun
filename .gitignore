@@ -30,6 +30,9 @@ wheels/
 
 vrchat_session.json
 
+# Claude Code
+.claude/
+
 # Node.js / VitePress
 node_modules/
 docs/.vitepress/dist
