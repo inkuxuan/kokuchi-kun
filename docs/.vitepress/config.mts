@@ -1,7 +1,7 @@
 import { defineConfig } from 'vitepress'
 
 export default defineConfig({
-  base: '/vspc-bot/',
+  base: '/kokuchi-kun/',
 
   locales: {
     root: {
@@ -68,7 +68,7 @@ export default defineConfig({
 
   themeConfig: {
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/inkuxuan/vspc-bot' },
+      { icon: 'github', link: 'https://github.com/inkuxuan/kokuchi-kun' },
     ],
   },
 })
