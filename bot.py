@@ -104,7 +104,8 @@ class VRChatAnnounceBot(commands.Bot):
             await self.add_cog(AnnouncementCog(self, self.config, self.ai_processor, self.scheduler))
             await self.add_cog(AdminCog(self, self.config, self.scheduler))
             await self.add_cog(GeneralCog(self))
-            
+
+            await self.tree.sync()
             logger.info(Messages.Log.BOT_SETUP_SUCCESS)
             
         except Exception as e:
