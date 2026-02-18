@@ -12,10 +12,22 @@ import uuid
 from utils.vrchat_api import VRChatAPI
 from utils.ai_processor import AIProcessor
 from utils.scheduler import Scheduler
+from utils.persistence import Persistence
 from cogs.announcement import AnnouncementCog
 from cogs.admin import AdminCog
 from cogs.general import GeneralCog
 from utils.messages import Messages
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler("bot.log")
+    ]
+)
+logger = logging.getLogger(__name__)
 
 # Parse command-line arguments
 def parse_arguments():
@@ -34,17 +46,6 @@ def load_environment(env_file):
         logger.warning(Messages.Log.ENV_NOT_FOUND.format(env_file))
         load_dotenv()
         return False
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler("bot.log")
-    ]
-)
-logger = logging.getLogger(__name__)
 
 class VRChatAnnounceBot(commands.Bot):
     def __init__(self, config, args):
@@ -66,19 +67,23 @@ class VRChatAnnounceBot(commands.Bot):
         self._load_env_variables()
         
         # Initialize components
+        self.persistence = Persistence()
         self.vrchat_api = VRChatAPI(self.config['vrchat'])
-        self.scheduler = Scheduler(self.vrchat_api)
+        self.scheduler = Scheduler(self.vrchat_api, self.persistence)
         self.ai_processor = AIProcessor(self.config['openrouter'])
 
         # Start heartbeat loop
-        heartbeat_interval = self.config['vrchat'].get('heartbeat_interval', 60)
-        if heartbeat_interval > 0:
-            self.heartbeat_check.change_interval(minutes=heartbeat_interval)
-            self.heartbeat_check.start()
+        if 'vrchat' in self.config:
+            heartbeat_interval = self.config['vrchat'].get('heartbeat_interval', 60)
+            if heartbeat_interval > 0:
+                self.heartbeat_check.change_interval(minutes=heartbeat_interval)
+                self.heartbeat_check.start()
         
     def _load_env_variables(self):
         """Load sensitive data from environment variables into config"""
         # Discord
+        if 'discord' not in self.config:
+             self.config['discord'] = {}
         self.config['discord']['token'] = os.getenv('DISCORD_TOKEN')
         
         # OpenRouter - only load the API key, keep model in config
@@ -117,9 +122,10 @@ class VRChatAnnounceBot(commands.Bot):
             logger.info(Messages.Log.BOT_READY.format(self.user))
             
             # Send online message
-            channel = self.get_channel(self.config['discord']['channel_ids'][0])
-            if channel:
-                await channel.send(Messages.Discord.BOT_ONLINE)
+            if 'discord' in self.config and 'channel_ids' in self.config['discord'] and self.config['discord']['channel_ids']:
+                channel = self.get_channel(self.config['discord']['channel_ids'][0])
+                if channel:
+                    await channel.send(Messages.Discord.BOT_ONLINE)
 
             # Initialize VRChat API after bot is ready
             auth_result = await self.vrchat_api.initialize()
@@ -129,9 +135,12 @@ class VRChatAnnounceBot(commands.Bot):
                 return
                 
             logger.info(Messages.Log.VRC_API_INIT_SUCCESS)
-            if channel:
-                display_name = auth_result.get('display_name', 'Unknown')
-                await channel.send(Messages.Discord.LOGGED_IN.format(display_name))
+
+            if 'discord' in self.config and 'channel_ids' in self.config['discord'] and self.config['discord']['channel_ids']:
+                channel = self.get_channel(self.config['discord']['channel_ids'][0])
+                if channel:
+                    display_name = auth_result.get('display_name', 'Unknown')
+                    await channel.send(Messages.Discord.LOGGED_IN.format(display_name))
             
         except Exception as e:
             logger.error(Messages.Log.VRC_API_INIT_ERROR.format(e))
@@ -228,10 +237,16 @@ async def main():
     
     # Create and start the bot
     bot = VRChatAnnounceBot(config, args)
+
     try:
-        if not bot.config['discord']['token']:
-            logger.error(Messages.Log.DISCORD_TOKEN_NOT_FOUND)
-            return
+        if 'discord' not in bot.config or not bot.config['discord'].get('token'):
+             # Try to load token again if missing (maybe from env if config didn't have it)
+             token = os.getenv('DISCORD_TOKEN')
+             if not token:
+                logger.error(Messages.Log.DISCORD_TOKEN_NOT_FOUND)
+                return
+             bot.config['discord']['token'] = token
+
         await bot.start(bot.config['discord']['token'])
     except Exception as e:
         logger.error(Messages.Log.BOT_START_ERROR.format(e))
