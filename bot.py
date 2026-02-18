@@ -2,6 +2,8 @@ import asyncio
 import logging
 import yaml
 import os
+import shutil
+import sys
 import argparse
 from dotenv import load_dotenv
 import discord
@@ -17,6 +19,31 @@ from cogs.announcement import AnnouncementCog
 from cogs.admin import AdminCog
 from cogs.general import GeneralCog
 from utils.messages import Messages
+
+def ensure_config_exists():
+    """Create config.yaml from template if it is missing, then exit so the user can fill it in."""
+    if not os.path.exists('config.yaml'):
+        if os.path.exists('config.yaml.template'):
+            shutil.copy('config.yaml.template', 'config.yaml')
+            print("config.yaml was created from config.yaml.template.")
+            print("Please edit config.yaml and fill in your values, then restart the bot.")
+        else:
+            print("ERROR: config.yaml is missing and no config.yaml.template was found.")
+        sys.exit(1)
+
+
+def ensure_env_exists(env_file):
+    """Create the env file from .prd.env.template if it is missing, then exit so the user can fill it in."""
+    if not os.path.exists(env_file):
+        template = '.prd.env.template'
+        if os.path.exists(template):
+            shutil.copy(template, env_file)
+            print(f"{env_file} was created from {template}.")
+            print(f"Please edit {env_file} and fill in your credentials, then restart the bot.")
+        else:
+            print(f"ERROR: {env_file} is missing and no {template} was found.")
+        sys.exit(1)
+
 
 # Parse command-line arguments
 def parse_arguments():
@@ -223,7 +250,11 @@ class VRChatAnnounceBot(commands.Bot):
 async def main():
     # Parse command-line arguments
     args = parse_arguments()
-    
+
+    # Ensure required files exist before doing anything else
+    ensure_env_exists(args.env)
+    ensure_config_exists()
+
     # Load environment from specified file
     load_environment(args.env)
     

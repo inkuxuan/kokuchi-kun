@@ -1,0 +1,68 @@
+discord:
+  prefix: "!"
+  channel_ids: # List of channel IDs to monitor
+    - 000000000000000000   # Replace with your channel ID(s)
+  admin_role_id: 000000000000000000   # Replace with your admin role ID
+  seen_reaction_emoji: "👀"
+  approval_reaction_emoji: "👍"
+  fast_forward_emoji: "⏩"
+  calendar_emoji: "📅"
+
+openrouter:
+  model: "deepseek/deepseek-v3.2"
+  prompt: |
+    # Role
+    あなたは情報を整理し、正確にJSONへ構造化する専門家です。
+
+    # Task
+    提供されたDiscordメッセージから「告知に関する情報」および「イベント情報」を抽出し、指定されたJSON形式で出力してください。
+
+    # 抽出ルール
+    1. 抽出対象：
+      - announcement_date: 告知申請で記載された告知を予定している「日付」 (YYYY-MM-DD)
+      - announcement_time: 告知申請で記載された告知を予定している「時刻」 (HH:MM)
+      - event_start_date: 告知内容から抽出されたイベントの開始「日付」 (YYYY-MM-DD)
+      - event_start_time: 告知内容から抽出されたイベントの開始「時刻」 (HH:MM)
+      - event_end_date: 告知内容から抽出されたイベントの終了「日付」 (YYYY-MM-DD)（記載がない場合はnull）
+      - event_end_time: 告知内容から抽出されたイベントの終了「時刻」 (HH:MM)（記載がない場合はnull）
+      - title: 告知のタイトル（そのまま入れること）
+      - event_title: 告知のタイトルから抽出された、イベント自体の名称（例：「手話教室」開催のお知らせ → 手話教室）。抽出できない場合はタイトルと同じにする。
+      - content: 告知の本文（イベント開始・終了日付などを含め、そのまま入れること）
+
+    2. 注意事項：
+      - 「イベントの開始時刻」と「告知を出す時刻」を混同しないでください。それぞれ明確に区別してください。
+      - 24:00, 25:00 などの表記は使用せず、00:00, 01:00のように変換してください。
+      - 「本日」は「告知を出す時刻」当日の日付に変換してください。
+      - イベント終了時刻が明記されていない場合は、フィールドをnullにしてください。
+      - 文頭・文末の挨拶（「よろしくお願いします」「お疲れ様です」等）は本文(content)から削除してください。
+
+    # 出力形式
+    結果は以下のJSONフォーマットのみで返してください。マークダウンや説明は不要です：
+    {
+      "announcement_date": "YYYY-MM-DD",
+      "announcement_time": "HH:MM",
+      "event_start_date": "YYYY-MM-DD",
+      "event_start_time": "HH:MM",
+      "event_end_date": "YYYY-MM-DD",
+      "event_end_time": "HH:MM",
+      "title": "タイトル",
+      "event_title": "イベント名",
+      "content": "内容"
+    }
+
+    ======メッセージ:======
+    __message_content__
+    ======メッセージ終了======
+
+
+vrchat:
+  group_id: "grp_00000000-0000-0000-0000-000000000000"  # Replace with your VRChat group ID
+  heartbeat_interval: 60 # minutes
+
+firestore:
+  server_id: "default"  # Identifier for this server's state in Firestore
+  servers_collection: "servers"  # Top-level collection for per-server state
+  shared_collection: "shared"    # Top-level collection for shared state (e.g. VRChat session)
+  state_subcollection: "state"   # Subcollection under each server document
+
+# Other non-sensitive configuration can remain here

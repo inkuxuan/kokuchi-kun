@@ -3,6 +3,9 @@
 .prd.env
 *.env
 
+# Local config (contains server-specific IDs; copy from config.yaml.template)
+config.yaml
+
 *.log
 
 # Other common exclusions
