@@ -9,8 +9,8 @@ class GeneralCog(commands.Cog):
 
     @commands.hybrid_command(name="ping", description="Check if the bot is alive and get its version")
     async def ping(self, ctx):
-        await ctx.reply(f"VSPC-bot Version {self.version}")
+        await ctx.reply(f"Kokuchi-kun Version {self.version}")
 
     @commands.hybrid_command(name="version", description="Get the current bot version")
     async def version(self, ctx):
-        await ctx.reply(f"VSPC-bot Version {self.version}")
+        await ctx.reply(f"Kokuchi-kun Version {self.version}")

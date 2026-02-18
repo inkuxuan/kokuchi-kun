@@ -107,12 +107,12 @@ Node.js is required to work on the docs. Dependencies are declared in `package.j
 
 ```bash
 npm install       # first-time setup
-npm run docs:dev  # start local dev server at http://localhost:5173/vspc-bot/
+npm run docs:dev  # start local dev server at http://localhost:5173/kokuchi-kun/
 npm run docs:build   # build static site to docs/.vitepress/dist
 npm run docs:preview # preview the built site locally
 ```
 
-The docs are deployed to GitHub Pages automatically via `.github/workflows/deploy-docs.yml` when changes to `docs/**` are pushed to `main`. The live site is at `https://inkuxuan.github.io/vspc-bot/`.
+The docs are deployed to GitHub Pages automatically via `.github/workflows/deploy-docs.yml` when changes to `docs/**` are pushed to `main`. The live site is at `https://inkuxuan.github.io/kokuchi-kun/`.
 
 Do **not** commit `node_modules/` or `docs/.vitepress/dist` — they are excluded in `.gitignore`.
 
