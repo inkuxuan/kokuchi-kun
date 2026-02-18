@@ -5,7 +5,7 @@ import os
 import argparse
 from dotenv import load_dotenv
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 import traceback
 import uuid
 
@@ -69,6 +69,12 @@ class VRChatAnnounceBot(commands.Bot):
         self.vrchat_api = VRChatAPI(self.config['vrchat'])
         self.scheduler = Scheduler(self.vrchat_api)
         self.ai_processor = AIProcessor(self.config['openrouter'])
+
+        # Start heartbeat loop
+        heartbeat_interval = self.config['vrchat'].get('heartbeat_interval', 60)
+        if heartbeat_interval > 0:
+            self.heartbeat_check.change_interval(minutes=heartbeat_interval)
+            self.heartbeat_check.start()
         
     def _load_env_variables(self):
         """Load sensitive data from environment variables into config"""
@@ -189,6 +195,21 @@ class VRChatAnnounceBot(commands.Bot):
         # This allows admin commands like !list and !cancel to work without a mention
         # Note: Announcement requests still require a mention as that's handled in AnnouncementCog
         await self.process_commands(message)
+
+    @tasks.loop(minutes=60)
+    async def heartbeat_check(self):
+        """Periodically check VRChat authentication status"""
+        if not hasattr(self, 'vrchat_api'):
+            return
+
+        try:
+            await self.vrchat_api.check_auth_status()
+        except Exception as e:
+            logger.error(Messages.Log.HEARTBEAT_FAIL.format(e))
+
+    @heartbeat_check.before_loop
+    async def before_heartbeat(self):
+        await self.wait_until_ready()
 
 async def main():
     # Parse command-line arguments
