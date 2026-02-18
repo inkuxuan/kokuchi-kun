@@ -7,7 +7,7 @@
 Check the following:
 
 - You are in the correct channel (the one the bot monitors)
-- Your message includes the bot's mention (`@VSPC Bot` or similar)
+- Your message includes the bot's mention (`@Kokuchi Kun` or similar)
 - The bot is currently online (use `!ping` to check)
 
 ---

@@ -7,7 +7,7 @@ export default defineConfig({
     root: {
       label: '日本語',
       lang: 'ja',
-      title: 'VSPC Bot',
+      title: 'Kokuchi Kun',
       description: 'VRChatグループへの告知をスケジュールするDiscord Bot',
       themeConfig: {
         nav: [
@@ -37,7 +37,7 @@ export default defineConfig({
     en: {
       label: 'English',
       lang: 'en',
-      title: 'VSPC Bot',
+      title: 'Kokuchi Kun',
       description: 'Discord bot for scheduling VRChat group announcements',
       themeConfig: {
         nav: [

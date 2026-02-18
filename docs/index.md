@@ -2,7 +2,7 @@
 layout: home
 
 hero:
-  name: "VSPC Bot"
+  name: "Kokuchi Kun"
   text: "VRChat告知Bot"
   tagline: DiscordからVRChatグループへの告知をスケジュールできます。
   actions:

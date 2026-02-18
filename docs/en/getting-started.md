@@ -1,6 +1,6 @@
 # Getting Started
 
-kokuchi-kun is a Discord bot that automates scheduling VRChat group announcements. Send a message in the designated channel, and the bot will post your announcement to the VRChat group at the specified time.
+Kokuchi Kun is a Discord bot that automates scheduling VRChat group announcements. Send a message in the designated channel, and the bot will post your announcement to the VRChat group at the specified time.
 
 > **Note:** For now, all dates and times are assumed to be in **JST (Japan Standard Time, UTC+9)**. Make sure to specify times in JST.
 
