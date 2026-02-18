@@ -63,42 +63,51 @@ class Scheduler:
         """Execute the announcement posting"""
         try:
             logger.info(Messages.Log.EXECUTING_JOB.format(job_id))
-            
+
             # Re-authenticate if needed
             if not self.vrchat_api.authenticated:
                 auth_result = await self.vrchat_api.initialize()
                 if not auth_result['success']:
                     logger.error(Messages.Log.JOB_AUTH_FAIL.format(job_id, auth_result['error']))
                     self.jobs[job_id]['status'] = 'failed'
+                    # Notify callback to persist the failure
+                    if self.on_job_completion:
+                        await self.on_job_completion(self.jobs[job_id].copy())
                     return
-            
+
             # Post the announcement
             result = await self.vrchat_api.post_announcement(title, content)
-            
+
             if result['success']:
-                logger.info(Messages.Log.POST_SUCCESS.format(result['post_id']))
+                logger.info(Messages.Log.POST_SUCCESS.format(result.get('post_id', 'N/A')))
                 self.jobs[job_id]['status'] = 'success'
             else:
                 logger.error(Messages.Log.POST_FAIL.format(result['error']))
                 self.jobs[job_id]['status'] = 'failed'
-                
+
                 # If authentication failed, we'll retry after reauth
                 if "Authentication failed" in result['error']:
                     # The post will be automatically retried after reauth
                     return
-                
+
+            # Copy job data before potential deletion
+            job_data = self.jobs[job_id].copy()
+
             # Remove the job from the jobs dictionary if it succeeded
             if self.jobs[job_id]['status'] == 'success':
-                job_data = self.jobs[job_id].copy()
                 del self.jobs[job_id]
-                
-                # Notify callback
-                if self.on_job_completion:
-                    await self.on_job_completion(job_data)
+
+            # Notify callback for both success and failure to persist state
+            if self.on_job_completion:
+                await self.on_job_completion(job_data)
 
         except Exception as e:
             logger.error(Messages.Log.JOB_EXEC_ERROR.format(job_id, e))
-            self.jobs[job_id]['status'] = 'failed'
+            if job_id in self.jobs:
+                self.jobs[job_id]['status'] = 'failed'
+                # Notify callback to persist the failure
+                if self.on_job_completion:
+                    await self.on_job_completion(self.jobs[job_id].copy())
     
     def restore_jobs(self, jobs_list):
         """Restore jobs from storage. Returns (restored_count, skipped_jobs_list)"""

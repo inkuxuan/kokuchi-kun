@@ -66,8 +66,12 @@ class AdminCog(commands.Cog):
     async def cancel_job(self, ctx, job_id: str):
         """Cancel a scheduled announcement"""
         result = self.scheduler.cancel_job(job_id)
-        
+
         if result:
+            # Persist the cancellation to Firestore
+            announcement_cog = self.bot.get_cog('AnnouncementCog')
+            if announcement_cog:
+                await announcement_cog.save_state()
             await ctx.reply(Messages.Discord.JOB_CANCELLED.format(job_id))
         else:
             await ctx.reply(Messages.Discord.JOB_NOT_FOUND.format(job_id))

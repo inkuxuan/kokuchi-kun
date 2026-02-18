@@ -1,6 +1,4 @@
 import logging
-import os
-import json
 import vrchatapi
 import sys
 from datetime import datetime
@@ -24,7 +22,7 @@ console_handler.setFormatter(formatter)
 logger.addHandler(console_handler)
 
 class VRChatAPI:
-    def __init__(self, config):
+    def __init__(self, config, persistence):
         """Initialize with configuration but don't connect yet"""
         self.username = config['username']
         self.password = config['password']
@@ -32,7 +30,7 @@ class VRChatAPI:
         self.authenticated = False
         self.api_client = None
         self.current_user = None
-        self.cookie_file = config.get('cookie_file', 'vrchat_session.json')
+        self.persistence = persistence
         self.failed_posts = []  # Store failed posts for retry
         self.otp_callback = None  # Callback function to request OTP
     
@@ -55,17 +53,16 @@ class VRChatAPI:
         return await self._authenticate_with_credentials()
     
     async def _try_cookie_auth(self):
-        """Try to authenticate using saved cookies"""
+        """Try to authenticate using saved cookies from Firestore"""
         logger.info(Messages.Log.COOKIE_AUTH_ATTEMPT)
-        
+
         try:
-            if not os.path.exists(self.cookie_file):
+            cookie_data = await self.persistence.load_shared('vrchat_session', {})
+
+            if not cookie_data:
                 logger.warning(Messages.Log.NO_SESSION_FILE)
                 return False
-                
-            with open(self.cookie_file, 'r') as f:
-                cookie_data = json.load(f)
-                
+
             auth_cookie = cookie_data.get('authCookie')
             two_factor_cookie = cookie_data.get('twoFactorAuthCookie')
             
@@ -140,41 +137,40 @@ class VRChatAPI:
             self.current_user = None
             return False
     
-    def _save_cookies(self):
-        """Save authentication cookies to file"""
+    async def _save_cookies(self):
+        """Save authentication cookies to Firestore"""
         if not self.api_client or not self.authenticated:
             return False
-            
+
         try:
             cookies = {}
-            
+
             # Extract cookies properly from the cookie jar
             # This matches how the official example accesses cookies
             if hasattr(self.api_client.rest_client, 'cookie_jar') and hasattr(self.api_client.rest_client.cookie_jar, '_cookies'):
                 cookie_jar = self.api_client.rest_client.cookie_jar._cookies
-                
+
                 # Check if the VRChat domain exists
                 if "api.vrchat.cloud" in cookie_jar and "/" in cookie_jar["api.vrchat.cloud"]:
                     domain_cookies = cookie_jar["api.vrchat.cloud"]["/"]
-                    
+
                     if "auth" in domain_cookies:
                         cookies['authCookie'] = domain_cookies["auth"].value
-                        
+
                     if "twoFactorAuth" in domain_cookies:
                         cookies['twoFactorAuthCookie'] = domain_cookies["twoFactorAuth"].value
-            
+
             # Verify we have the auth cookie before saving
             if 'authCookie' not in cookies:
                 logger.warning(Messages.Log.NO_AUTH_COOKIE_SAVE)
                 return False
-                
-            # Save to file
-            with open(self.cookie_file, 'w') as f:
-                json.dump(cookies, f)
-                
-            logger.info(Messages.Log.COOKIES_SAVED.format(self.cookie_file))
+
+            # Save to Firestore
+            await self.persistence.save_shared('vrchat_session', cookies)
+
+            logger.info(Messages.Log.COOKIES_SAVED.format('Firestore'))
             return True
-            
+
         except Exception as e:
             logger.error(Messages.Log.COOKIE_SAVE_FAIL.format(str(e)))
             return False
@@ -198,7 +194,7 @@ class VRChatAPI:
         
         # Save cookies if authentication was successful
         if result.get('success') and self.authenticated:
-            self._save_cookies()
+            await self._save_cookies()
             
         return result
     
@@ -217,9 +213,9 @@ class VRChatAPI:
                 self.authenticated = True
                 
                 logger.info(Messages.Log.AUTH_SUCCESS.format(self.current_user.display_name))
-                
+
                 # Save cookies after successful authentication
-                self._save_cookies()
+                await self._save_cookies()
                 
                 return {
                     "success": True,
