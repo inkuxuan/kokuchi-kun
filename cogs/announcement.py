@@ -6,12 +6,11 @@ import asyncio
 import uuid
 import time
 from utils.messages import Messages
-from utils.persistence import Persistence
 
 logger = logging.getLogger(__name__)
 
 class AnnouncementCog(commands.Cog):
-    def __init__(self, bot, config, ai_processor, scheduler):
+    def __init__(self, bot, config, ai_processor, scheduler, persistence):
         self.bot = bot
         self.config = config
         self.ai_processor = ai_processor
@@ -27,21 +26,23 @@ class AnnouncementCog(commands.Cog):
         self.queued_announcements = set()  # Store message IDs that have been queued
         self.history = [] # List of completed message IDs (limit 1000)
         self.otp_requests = {}  # Store OTP requests and their futures
-        self.persistence = Persistence()
-        
+        self.persistence = persistence
+
         # Set up OTP callback for VRChat API
         self.scheduler.vrchat_api.set_otp_callback(self._request_otp)
-        
+
         # Set up job completion callback
         self.scheduler.set_on_job_completion(self._on_job_complete)
 
         # Load state will be called in on_ready
 
     async def _on_job_complete(self, job_data):
-        """Callback for when a job completes successfully"""
+        """Callback for when a job completes (success or failure)"""
         try:
             message_id = job_data.get('message_id')
-            if message_id:
+            status = job_data.get('status', 'success')
+
+            if message_id and status == 'success':
                 # Add to history
                 if message_id not in self.history:
                     self.history.append(message_id)
@@ -57,26 +58,26 @@ class AnnouncementCog(commands.Cog):
                 if message_id in self.pending_requests:
                     del self.pending_requests[message_id]
 
-                # Save state
-                self.save_state()
-                logger.info(f"Job completed and saved to history: {message_id}")
+            # Save state for both success and failure
+            await self.save_state()
+            logger.info(f"Job {status} and state saved: {message_id}")
         except Exception as e:
             logger.error(f"Error in job completion callback: {e}")
 
-    def save_state(self):
-        """Save the current state to disk"""
-        self.persistence.save_data('pending.json', self.pending_requests)
-        self.persistence.save_data('history.json', self.history)
-        self.persistence.save_data('jobs.json', self.scheduler.get_jobs_data())
-        self.persistence.save_data('calendar_events.json', self.calendar_events)
+    async def save_state(self):
+        """Save the current state to Firestore"""
+        await self.persistence.save_data('pending', self.pending_requests)
+        await self.persistence.save_data('history', self.history)
+        await self.persistence.save_data('jobs', self.scheduler.get_jobs_data())
+        await self.persistence.save_data('calendar', self.calendar_events)
 
-    def load_state(self):
-        """Load state from disk"""
-        self.pending_requests = self.persistence.load_data('pending.json', {})
-        self.history = self.persistence.load_data('history.json', [])
-        self.calendar_events = self.persistence.load_data('calendar_events.json', {})
+    async def load_state(self):
+        """Load state from Firestore"""
+        self.pending_requests = await self.persistence.load_data('pending', {})
+        self.history = await self.persistence.load_data('history', [])
+        self.calendar_events = await self.persistence.load_data('calendar', {})
 
-        jobs_data = self.persistence.load_data('jobs.json', [])
+        jobs_data = await self.persistence.load_data('jobs', [])
         restored_count, skipped_jobs = self.scheduler.restore_jobs(jobs_data)
 
         # Rebuild queued_announcements from restored jobs
@@ -92,10 +93,10 @@ class AnnouncementCog(commands.Cog):
         """Called when the bot is ready"""
         try:
             # Load state
-            restored_jobs, pending_count, skipped_jobs = self.load_state()
+            restored_jobs, pending_count, skipped_jobs = await self.load_state()
 
-            # Immediately save state to clean up any skipped jobs from jobs.json
-            self.save_state()
+            # Immediately save state to clean up any skipped jobs from jobs
+            await self.save_state()
 
             # Send restoration message
             channel = self.bot.get_channel(self.channel_ids[0])
@@ -119,18 +120,18 @@ class AnnouncementCog(commands.Cog):
         if not channel:
             logger.error(Messages.Log.OTP_CHANNEL_NOT_FOUND)
             return None
-            
+
         # Create a unique request ID
         request_id = str(uuid.uuid4())
-        
+
         # Create a future to wait for the response
         future = asyncio.Future()
         self.otp_requests[request_id] = future
-        
+
         # Send OTP request message
         role_mention = f"<@&{self.admin_role_id}>"
         message = await channel.send(Messages.Discord.OTP_REQUEST.format(role_mention=role_mention, otp_type=otp_type))
-        
+
         try:
             # Wait for response with timeout
             otp = await asyncio.wait_for(future, timeout=300)  # 5 minute timeout
@@ -142,14 +143,14 @@ class AnnouncementCog(commands.Cog):
             # Clean up
             if request_id in self.otp_requests:
                 del self.otp_requests[request_id]
-    
+
     @commands.Cog.listener()
     async def on_message(self, message):
         """Process messages in the announcement channels"""
         # Check for OTP response
         if message.author.bot:
             return
-            
+
         # Check if this is an OTP response
         if message.channel.id in self.channel_ids:
             # Check if the user has admin role
@@ -163,15 +164,15 @@ class AnnouncementCog(commands.Cog):
                         # Delete the message for security
                         await message.delete()
                         return
-        
+
         # Ignore messages from non-monitored channels
         if message.channel.id not in self.channel_ids:
             return
-        
+
         # Check if message mentions the bot and is an announcement request
         if self.bot.user.mentioned_in(message):
             await self._handle_announcement_request(message)
-    
+
     async def _handle_announcement_request(self, message):
         """Handle a new announcement request"""
         try:
@@ -183,32 +184,32 @@ class AnnouncementCog(commands.Cog):
             if str(message.id) in self.history:
                 await message.reply(Messages.Discord.ALREADY_BOOKED)
                 return
-                
+
             # Simply store the message ID and add reaction
             self.pending_requests[str(message.id)] = None  # Will store scheduled message ID later
-            self.save_state()
+            await self.save_state()
             await message.add_reaction(self.seen_emoji)
             await message.reply(Messages.Discord.REQUEST_CONFIRMED)
-            
+
         except Exception as e:
             logger.error(Messages.Log.ANNOUNCEMENT_REQUEST_ERROR.format(e))
             await message.reply(Messages.Discord.ERROR_OCCURRED.format(str(e)))
-    
+
     @commands.Cog.listener()
     async def on_raw_reaction_add(self, payload):
         """Process reactions to announcement requests"""
         # Ignore own reactions
         if payload.user_id == self.bot.user.id:
             return
-            
+
         # Check if the channel is correct
         if payload.channel_id not in self.channel_ids:
             return
-            
+
         channel = self.bot.get_channel(payload.channel_id)
         if not channel:
             return
-            
+
         # Get member to check roles
         try:
             member = await channel.guild.fetch_member(payload.user_id)
@@ -246,7 +247,7 @@ class AnnouncementCog(commands.Cog):
                 if queued_msg_id == str(payload.message_id):
                     request_msg_id = req_id
                     break
-            
+
             if request_msg_id:
                 # Get the original request message to check author
                 try:
@@ -315,7 +316,7 @@ class AnnouncementCog(commands.Cog):
 
                 # Store event ID
                 self.calendar_events[str(message.id)] = calendar_id
-                self.save_state()
+                await self.save_state()
 
                 # Send success message
                 calendar_url = f"https://vrchat.com/home/group/{group_id}/calendar/{calendar_id}"
@@ -335,11 +336,11 @@ class AnnouncementCog(commands.Cog):
         # Ignore own reactions
         if payload.user_id == self.bot.user.id:
             return
-            
+
         # Check if the channel is correct
         if payload.channel_id not in self.channel_ids:
             return
-            
+
         channel = self.bot.get_channel(payload.channel_id)
         if not channel:
             return
@@ -367,7 +368,7 @@ class AnnouncementCog(commands.Cog):
                         calendar_event_id = self.calendar_events[str(request_msg_id)]
                         result = await self.scheduler.vrchat_api.delete_group_calendar_event(calendar_event_id)
                         del self.calendar_events[str(request_msg_id)]
-                        self.save_state()
+                        await self.save_state()
                         if result['success']:
                             await channel.send(Messages.Discord.CALENDAR_DELETED)
                         else:
@@ -385,7 +386,7 @@ class AnnouncementCog(commands.Cog):
             message = await channel.fetch_message(payload.message_id)
             if not message:
                 return
-                
+
             # Check if there are any approval reactions left
             approval_reactions = [r for r in message.reactions if str(r.emoji) == self.approval_emoji]
             if not approval_reactions or approval_reactions[0].count == 0:
@@ -412,7 +413,7 @@ class AnnouncementCog(commands.Cog):
                         self.queued_announcements.remove(str(message.id))
                     self.pending_requests[str(message.id)] = None
 
-                    self.save_state()
+                    await self.save_state()
                     await message.reply(Messages.Discord.BOOKING_CANCELLED)
 
     async def _process_immediate_post(self, request_msg_id, channel_id, processing_msg_id):
@@ -456,24 +457,28 @@ class AnnouncementCog(commands.Cog):
                     if len(self.history) > 1000:
                         self.history = self.history[-1000:]
 
-                self.save_state()
+                await self.save_state()
                 # We keep pending_requests as it maps to the processing msg which still exists
             else:
+                # BUG FIX: Save state even on failure — the job was already cancelled
+                await self.save_state()
                 await channel.send(Messages.Discord.IMMEDIATE_POST_FAIL.format(result['error']))
 
         except Exception as e:
             logger.error(f"Error in immediate post: {e}")
+            # BUG FIX: Save state even on exception — the job was already cancelled
+            await self.save_state()
             await channel.send(Messages.Discord.IMMEDIATE_POST_FAIL.format(str(e)))
-    
+
     async def _process_approved_announcement(self, message):
         """Process an approved announcement request"""
         try:
             # Send processing message
             processing_msg = await message.reply(Messages.Discord.PROCESSING)
-            
+
             # Process with AI using the current message content
             result = await self.ai_processor.process_announcement(message.content)
-            
+
             if not result["success"]:
                 await processing_msg.edit(content=Messages.Discord.ERROR_OCCURRED.format(result['error']))
                 return
@@ -487,7 +492,7 @@ class AnnouncementCog(commands.Cog):
 
                 await processing_msg.edit(content=Messages.Discord.PAST_TIME_WARNING.format(mentions=mentions))
                 return
-                
+
             # Schedule the announcement
             job_id = await self.scheduler.schedule_announcement(
                 result["announcement_timestamp"],
@@ -498,7 +503,7 @@ class AnnouncementCog(commands.Cog):
                 event_end_timestamp=result["event_end_timestamp"],
                 event_title=result.get("event_title")
             )
-            
+
             # Create confirmation embed
             embed = discord.Embed(
                 title=Messages.Discord.BOOKING_COMPLETED_TITLE,
@@ -509,28 +514,28 @@ class AnnouncementCog(commands.Cog):
             embed.add_field(name="イベント終了", value=f"<t:{int(result['event_end_timestamp'])}:F>", inline=False)
 
             embed.add_field(name=Messages.Discord.FIELD_TITLE, value=result["title"], inline=False)
-            
+
             content = result["content"]
             if len(content) > 1024:
                 content = content[:1021] + "..."
             embed.add_field(name=Messages.Discord.FIELD_CONTENT, value=content, inline=False)
             embed.add_field(name=Messages.Discord.FIELD_JOB_ID, value=job_id, inline=False)
             embed.add_field(name=Messages.Discord.FIELD_HINTS, value=Messages.Discord.FIELD_HINTS_CONTENTS, inline=False)
-            
+
             # Update the processing message with the final result
             await processing_msg.edit(content=None, embed=embed)
-            
+
             # Store the processing message ID for potential cancellation
             self.pending_requests[str(message.id)] = str(processing_msg.id)
             self.queued_announcements.add(str(message.id))
-            
+
             # Add calendar reaction for quick access
             await processing_msg.add_reaction(self.calendar_emoji)
 
             # Add fast forward reaction for quick access
             await processing_msg.add_reaction(self.fast_forward_emoji)
 
-            self.save_state()
+            await self.save_state()
 
         except Exception as e:
             logger.error(Messages.Log.APPROVED_ANNOUNCEMENT_ERROR.format(e))

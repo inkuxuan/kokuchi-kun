@@ -60,5 +60,7 @@ vrchat:
   group_id: "grp_55712cfd-77ab-464f-8174-1483616c0c89"
   heartbeat_interval: 60 # minutes
 
+firestore:
+  server_id: "default"  # Identifier for this server's state in Firestore
 
 # Other non-sensitive configuration can remain here

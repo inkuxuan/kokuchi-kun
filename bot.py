@@ -12,6 +12,7 @@ import uuid
 from utils.vrchat_api import VRChatAPI
 from utils.ai_processor import AIProcessor
 from utils.scheduler import Scheduler
+from utils.persistence import Persistence
 from cogs.announcement import AnnouncementCog
 from cogs.admin import AdminCog
 from cogs.general import GeneralCog
@@ -66,7 +67,9 @@ class VRChatAnnounceBot(commands.Bot):
         self._load_env_variables()
         
         # Initialize components
-        self.vrchat_api = VRChatAPI(self.config['vrchat'])
+        firestore_config = self.config.get('firestore', {})
+        self.persistence = Persistence(server_id=firestore_config.get('server_id', 'default'))
+        self.vrchat_api = VRChatAPI(self.config['vrchat'], self.persistence)
         self.scheduler = Scheduler(self.vrchat_api)
         self.ai_processor = AIProcessor(self.config['openrouter'])
 
@@ -101,7 +104,7 @@ class VRChatAnnounceBot(commands.Bot):
             self.vrchat_api.set_otp_callback(self._request_otp)
             
             # Add cogs first
-            await self.add_cog(AnnouncementCog(self, self.config, self.ai_processor, self.scheduler))
+            await self.add_cog(AnnouncementCog(self, self.config, self.ai_processor, self.scheduler, self.persistence))
             await self.add_cog(AdminCog(self, self.config, self.scheduler))
             await self.add_cog(GeneralCog(self))
             
