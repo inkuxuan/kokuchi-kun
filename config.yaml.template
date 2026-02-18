@@ -1,8 +1,8 @@
 discord:
   prefix: "!"
-  channel_ids: # List of channel IDs to monitor
-    - 000000000000000000   # Replace with your channel ID(s)
-  admin_role_id: 000000000000000000   # Replace with your admin role ID
+  channel_ids: # List of channel IDs to monitor (replace with your own)
+    - 000000000000000000
+  admin_role_id: 000000000000000000  # Replace with your admin role ID
   seen_reaction_emoji: "👀"
   approval_reaction_emoji: "👍"
   fast_forward_emoji: "⏩"
@@ -64,5 +64,3 @@ firestore:
   servers_collection: "servers"  # Top-level collection for per-server state
   shared_collection: "shared"    # Top-level collection for shared state (e.g. VRChat session)
   state_subcollection: "state"   # Subcollection under each server document
-
-# Other non-sensitive configuration can remain here
