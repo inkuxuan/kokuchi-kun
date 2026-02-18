@@ -56,24 +56,39 @@ Test codes should always be committed and included in the PR
 - **cogs/announcement.py** — Core logic. Manages the full announcement lifecycle: pending → queued → posted. Handles all emoji reaction events and state persistence.
 - **cogs/admin.py** — Admin slash commands: `/list`, `/cancel`, `/help`.
 - **utils/ai_processor.py** — OpenRouter (OpenAI-compatible) integration. Parses natural language Discord messages into structured JSON with announcement time, event time, title, and content.
-- **utils/scheduler.py** — APScheduler wrapper. Persists jobs to `data/jobs.json` and restores them on restart.
-- **utils/vrchat_api.py** — VRChat API client. Cookie-based auth with 2FA (Email OTP and TOTP). Caches session in `vrchat_session.json`.
-- **utils/persistence.py** — Simple JSON file persistence layer for `data/` directory.
+- **utils/scheduler.py** — APScheduler wrapper. Job metadata persisted via Firestore and restored on restart.
+- **utils/vrchat_api.py** — VRChat API client. Cookie-based auth with 2FA (Email OTP and TOTP). Session cached in Firestore (`shared/vrchat_session`).
+- **utils/persistence.py** — Async Firestore persistence layer. Per-server state under `servers/{server_id}/state/`, shared state under `shared/`. Uses Application Default Credentials (ADC) on GCP.
 - **utils/messages.py** — Centralized message constants. Use `Discord.*` for bot responses and `Log.*` for logger calls.
 
 ### Configuration
 
-- **config.yaml** — Discord channel IDs, admin role, emoji reactions, OpenRouter model, VRChat group ID.
+- **config.yaml** — Discord channel IDs, admin role, emoji reactions, OpenRouter model, VRChat group ID, Firestore server ID.
 - **`.env`** — Secret credentials. See `.prd.env.template` for required keys.
 
-### State Persistence (`data/` directory)
+### State Persistence (Firestore)
 
-| File | Contents |
-|------|----------|
-| `data/pending.json` | Message ID → request mapping for unapproved announcements |
-| `data/jobs.json` | Scheduled job metadata (restored on restart) |
-| `data/history.json` | Completed announcements |
-| `data/calendar_events.json` | VRChat calendar event IDs |
+State is stored in Google Cloud Firestore. The bot uses Application Default Credentials (no key file needed on GCP VMs).
+
+**Per-server state** (`servers/{server_id}/state/`):
+
+| Document | Contents |
+|----------|----------|
+| `pending` | Message ID → request mapping for unapproved announcements |
+| `jobs` | Scheduled job metadata (restored on restart) |
+| `history` | Completed announcements (max 1000) |
+| `calendar` | VRChat calendar event IDs |
+
+**Shared state** (`shared/`):
+
+| Document | Contents |
+|----------|----------|
+| `vrchat_session` | VRChat authentication cookies |
+
+**Migration from JSON files:**
+```bash
+uv run python scripts/migrate_to_firestore.py [--server-id SERVER_ID]
+```
 
 ### Versioning
 

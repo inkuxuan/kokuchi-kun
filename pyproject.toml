@@ -20,6 +20,7 @@ dependencies = [
     "pytz>=2025.2",
     "python-dateutil>=2.9.0.post0",
     "tomli>=2.2.1",
+    "google-cloud-firestore>=2.16.0",
 ]
 
 [project.optional-dependencies]

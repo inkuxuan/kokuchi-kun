@@ -1,67 +1,97 @@
 import pytest
-import os
-import json
-import shutil
+from unittest.mock import AsyncMock, MagicMock, patch
 from utils.persistence import Persistence
+
 
 class TestPersistence:
     @pytest.fixture
-    def persistence(self):
-        """Create a Persistence instance with a test directory."""
-        test_dir = 'test_data'
-        if os.path.exists(test_dir):
-            shutil.rmtree(test_dir)
+    def mock_db(self):
+        """Create a mock Firestore AsyncClient."""
+        db = MagicMock()
+        return db
 
-        p = Persistence(data_dir=test_dir)
-        yield p
+    @pytest.fixture
+    def persistence(self, mock_db):
+        """Create a Persistence instance with a mocked Firestore client."""
+        with patch('utils.persistence.AsyncClient', return_value=mock_db):
+            p = Persistence(server_id='test-server')
+        return p
 
-        # Cleanup
-        if os.path.exists(test_dir):
-            shutil.rmtree(test_dir)
+    @pytest.mark.asyncio
+    async def test_save_data(self, persistence):
+        """Test saving per-server data to Firestore."""
+        doc_ref = MagicMock()
+        doc_ref.set = AsyncMock()
+        persistence.db.collection.return_value.document.return_value.collection.return_value.document.return_value = doc_ref
 
-    def test_ensure_data_dir(self, persistence):
-        """Test that the data directory is created."""
-        assert os.path.exists(persistence.data_dir)
+        result = await persistence.save_data('pending', {'key': 'value'})
 
-    def test_save_and_load_data(self, persistence):
-        """Test saving and loading valid JSON data."""
-        filename = 'test.json'
-        data = {'key': 'value', 'list': [1, 2, 3]}
+        assert result is True
+        doc_ref.set.assert_called_once_with({'data': {'key': 'value'}})
 
-        # Save
-        assert persistence.save_data(filename, data) is True
-        assert os.path.exists(os.path.join(persistence.data_dir, filename))
+    @pytest.mark.asyncio
+    async def test_load_data_exists(self, persistence):
+        """Test loading existing per-server data from Firestore."""
+        doc_snapshot = MagicMock()
+        doc_snapshot.exists = True
+        doc_snapshot.to_dict.return_value = {'data': {'key': 'value'}}
 
-        # Load
-        loaded_data = persistence.load_data(filename)
-        assert loaded_data == data
+        doc_ref = MagicMock()
+        doc_ref.get = AsyncMock(return_value=doc_snapshot)
+        persistence.db.collection.return_value.document.return_value.collection.return_value.document.return_value = doc_ref
 
-    def test_load_nonexistent_file(self, persistence):
-        """Test loading a file that doesn't exist returns default."""
-        filename = 'nonexistent.json'
-        default = {'default': True}
+        result = await persistence.load_data('pending')
 
-        loaded_data = persistence.load_data(filename, default)
-        assert loaded_data == default
+        assert result == {'key': 'value'}
 
-    def test_load_corrupt_file(self, persistence):
-        """Test loading a corrupt JSON file returns default."""
-        filename = 'corrupt.json'
-        filepath = os.path.join(persistence.data_dir, filename)
+    @pytest.mark.asyncio
+    async def test_load_data_not_exists(self, persistence):
+        """Test loading non-existent data returns default."""
+        doc_snapshot = MagicMock()
+        doc_snapshot.exists = False
 
-        # Write invalid JSON
-        with open(filepath, 'w') as f:
-            f.write('{invalid json')
+        doc_ref = MagicMock()
+        doc_ref.get = AsyncMock(return_value=doc_snapshot)
+        persistence.db.collection.return_value.document.return_value.collection.return_value.document.return_value = doc_ref
 
-        default = {'default': True}
-        loaded_data = persistence.load_data(filename, default)
-        assert loaded_data == default
+        result = await persistence.load_data('pending', {'default': True})
 
-    def test_save_unicode(self, persistence):
-        """Test saving unicode characters."""
-        filename = 'unicode.json'
-        data = {'text': 'こんにちは'}
+        assert result == {'default': True}
 
-        persistence.save_data(filename, data)
-        loaded_data = persistence.load_data(filename)
-        assert loaded_data == data
+    @pytest.mark.asyncio
+    async def test_load_data_error_returns_default(self, persistence):
+        """Test loading data with an error returns default."""
+        doc_ref = MagicMock()
+        doc_ref.get = AsyncMock(side_effect=Exception("Firestore error"))
+        persistence.db.collection.return_value.document.return_value.collection.return_value.document.return_value = doc_ref
+
+        result = await persistence.load_data('pending', {'default': True})
+
+        assert result == {'default': True}
+
+    @pytest.mark.asyncio
+    async def test_save_shared(self, persistence):
+        """Test saving shared data to Firestore."""
+        doc_ref = MagicMock()
+        doc_ref.set = AsyncMock()
+        persistence.db.collection.return_value.document.return_value = doc_ref
+
+        result = await persistence.save_shared('vrchat_session', {'authCookie': 'abc'})
+
+        assert result is True
+        doc_ref.set.assert_called_once_with({'authCookie': 'abc'})
+
+    @pytest.mark.asyncio
+    async def test_load_shared_exists(self, persistence):
+        """Test loading existing shared data from Firestore."""
+        doc_snapshot = MagicMock()
+        doc_snapshot.exists = True
+        doc_snapshot.to_dict.return_value = {'authCookie': 'abc'}
+
+        doc_ref = MagicMock()
+        doc_ref.get = AsyncMock(return_value=doc_snapshot)
+        persistence.db.collection.return_value.document.return_value = doc_ref
+
+        result = await persistence.load_shared('vrchat_session')
+
+        assert result == {'authCookie': 'abc'}

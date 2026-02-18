@@ -1,6 +1,7 @@
 import os
 import pytest
 import logging
+from unittest.mock import MagicMock, AsyncMock
 from dotenv import load_dotenv
 from utils.vrchat_api import VRChatAPI
 
@@ -29,8 +30,11 @@ def vrchat_config():
 
 def test_vrchat_post_announcement(vrchat_config):
     """Test posting an announcement to a VRChat group"""
-    # Create API instance
-    api = VRChatAPI(vrchat_config)
+    # Create API instance with mock persistence
+    mock_persistence = MagicMock()
+    mock_persistence.load_shared = AsyncMock(return_value={})
+    mock_persistence.save_shared = AsyncMock(return_value=True)
+    api = VRChatAPI(vrchat_config, mock_persistence)
     
     try:
         # Initialize API (will use cookies if available, otherwise credentials)

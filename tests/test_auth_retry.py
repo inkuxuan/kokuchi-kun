@@ -11,9 +11,11 @@ class TestVRChatAPIAuth(unittest.IsolatedAsyncioTestCase):
             'username': 'user',
             'password': 'password',
             'group_id': 'group_id',
-            'cookie_file': 'test_cookies.json'
         }
-        self.api = VRChatAPI(self.config)
+        self.mock_persistence = MagicMock()
+        self.mock_persistence.load_shared = AsyncMock(return_value={})
+        self.mock_persistence.save_shared = AsyncMock(return_value=True)
+        self.api = VRChatAPI(self.config, self.mock_persistence)
         self.api.api_client = MagicMock()
         self.api.authenticated = True
         self.api.otp_callback = AsyncMock()
@@ -44,9 +46,6 @@ class TestVRChatAPIAuth(unittest.IsolatedAsyncioTestCase):
 
         # OTP callback returns "wrong" then "correct"
         self.api.otp_callback.side_effect = ["wrong", "correct"]
-
-        # Mock _save_cookies to avoid file IO
-        self.api._save_cookies = MagicMock()
 
         # Run
         result = await self.api._authenticate()
