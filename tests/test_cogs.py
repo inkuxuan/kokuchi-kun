@@ -9,6 +9,7 @@ import time
 from cogs.admin import AdminCog
 from cogs.announcement import AnnouncementCog
 from utils.messages import Messages
+from utils.models import AIProcessingResult, JobData
 
 class TestCogs:
     @pytest.fixture
@@ -42,20 +43,19 @@ class TestCogs:
         scheduler = MagicMock()
         # Set up mock job list
         scheduler.list_jobs.return_value = [
-            {
-                'id': 'job1',
-                'title': 'Test Announcement',
-                'content': 'This is a test announcement content.',
-                'formatted_date_time': '2023-03-27 12:00:00',
-                'timestamp': 1679918400,
-                'message_id': '123456789'
-            }
+            JobData(
+                id='job1',
+                title='Test Announcement',
+                content='This is a test announcement content.',
+                formatted_date_time='2023-03-27 12:00:00',
+                timestamp=1679918400,
+                message_id='123456789',
+            )
         ]
         scheduler.cancel_job = MagicMock(return_value=True)
         scheduler.schedule_announcement = AsyncMock(return_value='new_job_id')
         scheduler.restore_jobs = MagicMock(return_value=(0, []))
         scheduler.get_jobs_data = MagicMock(return_value=[])
-        scheduler.vrchat_api = MagicMock()
         return scheduler
 
     @pytest.fixture
@@ -64,16 +64,16 @@ class TestCogs:
         processor = MagicMock()
         # Make sure timestamp is in the future relative to time.time()
         # Using a very large timestamp to be safe
-        processor.process_announcement = AsyncMock(return_value={
-            'success': True,
-            'timestamp': 4102444800, # 2100-01-01 00:00:00
-            'announcement_timestamp': 4102444800,
-            'event_start_timestamp': 4102444800 + 3600,
-            'event_end_timestamp': 4102444800 + 7200,
-            'title': 'AI Processed Title',
-            'content': 'AI processed content for VRChat announcement',
-            'formatted_date_time': '2100-01-01 00:00:00'
-        })
+        processor.process_announcement = AsyncMock(return_value=AIProcessingResult(
+            success=True,
+            timestamp=4102444800, # 2100-01-01 00:00:00
+            announcement_timestamp=4102444800,
+            event_start_timestamp=4102444800 + 3600,
+            event_end_timestamp=4102444800 + 7200,
+            title='AI Processed Title',
+            content='AI processed content for VRChat announcement',
+            formatted_date_time='2100-01-01 00:00:00',
+        ))
         return processor
 
     @pytest.fixture
@@ -87,15 +87,22 @@ class TestCogs:
         return persistence
 
     @pytest.fixture
+    def mock_vrchat_api(self):
+        """Create a mock VRChat API."""
+        api = MagicMock()
+        api.set_otp_callback = MagicMock()
+        api.group_id = "test_group_id"
+        return api
+
+    @pytest.fixture
     def admin_cog(self, mock_bot, mock_config, mock_scheduler):
         """Create an AdminCog instance with mocks."""
         return AdminCog(mock_bot, mock_config, mock_scheduler)
 
     @pytest.fixture
-    def announcement_cog(self, mock_bot, mock_config, mock_ai_processor, mock_scheduler, mock_persistence):
+    def announcement_cog(self, mock_bot, mock_config, mock_ai_processor, mock_scheduler, mock_persistence, mock_vrchat_api):
         """Create an AnnouncementCog instance with mocks."""
-        cog = AnnouncementCog(mock_bot, mock_config, mock_ai_processor, mock_scheduler, mock_persistence)
-        cog.history = [] # Explicitly init history for tests
+        cog = AnnouncementCog(mock_bot, mock_config, mock_ai_processor, mock_scheduler, mock_persistence, mock_vrchat_api)
         return cog
 
     @pytest.fixture
@@ -207,8 +214,8 @@ class TestCogs:
         # Verify reaction was added
         mock_message.add_reaction.assert_called_once_with(announcement_cog.seen_emoji)
 
-        # Verify message was stored in pending_requests
-        assert str(mock_message.id) in announcement_cog.pending_requests
+        # Verify message was stored in pending_requests (via state manager)
+        assert announcement_cog.state.is_pending(str(mock_message.id))
 
         # Verify persistence save was called
         announcement_cog.persistence.save_data.assert_called()
@@ -216,8 +223,8 @@ class TestCogs:
     @pytest.mark.asyncio
     async def test_announcement_approval(self, announcement_cog, mock_message, mock_admin_member):
         """Test approval of announcements via reactions."""
-        # Store a pending request
-        announcement_cog.pending_requests[str(mock_message.id)] = None
+        # Store a pending request (via state manager)
+        announcement_cog.state.add_pending(str(mock_message.id))
 
         # Create a payload for the reaction
         payload = MagicMock()
@@ -245,14 +252,14 @@ class TestCogs:
         # Verify persistence save was called
         announcement_cog.persistence.save_data.assert_called()
 
-        # Verify queued_announcements updated
-        assert str(mock_message.id) in announcement_cog.queued_announcements
+        # Verify queued_announcements updated (via state manager)
+        assert announcement_cog.state.is_queued(str(mock_message.id))
 
     @pytest.mark.asyncio
     async def test_duplicate_prevention_history(self, announcement_cog, mock_message):
         """Test that history prevents duplicate bookings."""
-        # Add message ID to history
-        announcement_cog.history.append(str(mock_message.id))
+        # Add message ID to history (via state manager)
+        announcement_cog.state.history.append(str(mock_message.id))
 
         # Call handler
         await announcement_cog._handle_announcement_request(mock_message)
@@ -261,7 +268,7 @@ class TestCogs:
         mock_message.reply.assert_called_with(Messages.Discord.ALREADY_BOOKED)
 
         # Verify NOT added to pending
-        assert str(mock_message.id) not in announcement_cog.pending_requests
+        assert not announcement_cog.state.is_pending(str(mock_message.id))
 
     @pytest.mark.asyncio
     async def test_restoration_on_ready(self, announcement_cog):
@@ -307,18 +314,18 @@ class TestCogs:
     @pytest.mark.asyncio
     async def test_job_completion_callback(self, announcement_cog):
         """Test job completion callback logic."""
-        # Setup
-        job_data = {'message_id': 'msg123', 'status': 'success'}
-        announcement_cog.queued_announcements.add('msg123')
+        # Setup (via state manager)
+        announcement_cog.state.queued_announcements.add('msg123')
 
         # Call callback
+        job_data = {'message_id': 'msg123', 'status': 'success'}
         await announcement_cog._on_job_complete(job_data)
 
         # Verify history update
-        assert 'msg123' in announcement_cog.history
+        assert announcement_cog.state.is_in_history('msg123')
 
         # Verify removal from queue
-        assert 'msg123' not in announcement_cog.queued_announcements
+        assert not announcement_cog.state.is_queued('msg123')
 
         # Verify persistence save
         announcement_cog.persistence.save_data.assert_called()
@@ -334,12 +341,12 @@ class TestCogs:
         current_time = time.time()
         past_time = current_time - 7200 # 2 hours ago
 
-        announcement_cog.ai_processor.process_announcement.return_value = {
-            "success": True,
-            "timestamp": past_time,
-            "title": "Test Title",
-            "content": "Test Content"
-        }
+        announcement_cog.ai_processor.process_announcement.return_value = AIProcessingResult(
+            success=True,
+            timestamp=past_time,
+            title="Test Title",
+            content="Test Content",
+        )
 
         # Run method
         await announcement_cog._process_approved_announcement(mock_message)
@@ -366,15 +373,15 @@ class TestCogs:
         current_time = time.time()
         recent_past_time = current_time - 1800 # 30 mins ago
 
-        announcement_cog.ai_processor.process_announcement.return_value = {
-            'success': True,
-            'timestamp': recent_past_time,
-            'announcement_timestamp': recent_past_time,
-            'event_start_timestamp': recent_past_time + 3600,
-            'event_end_timestamp': recent_past_time + 7200,
-            'title': 'Test Title',
-            'content': 'Test Content'
-        }
+        announcement_cog.ai_processor.process_announcement.return_value = AIProcessingResult(
+            success=True,
+            timestamp=recent_past_time,
+            announcement_timestamp=recent_past_time,
+            event_start_timestamp=recent_past_time + 3600,
+            event_end_timestamp=recent_past_time + 7200,
+            title='Test Title',
+            content='Test Content',
+        )
 
         # Run method
         await announcement_cog._process_approved_announcement(mock_message)

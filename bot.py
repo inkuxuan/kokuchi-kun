@@ -9,7 +9,6 @@ from dotenv import load_dotenv
 import discord
 from discord.ext import commands, tasks
 import traceback
-import uuid
 
 from utils.vrchat_api import VRChatAPI
 from utils.ai_processor import AIProcessor
@@ -88,8 +87,7 @@ class VRChatAnnounceBot(commands.Bot):
         
         self.config = config
         self.args = args
-        self.otp_requests = {}  # Store OTP requests and their futures
-        
+
         # Add sensitive environment variables to config
         self._load_env_variables()
         
@@ -132,11 +130,8 @@ class VRChatAnnounceBot(commands.Bot):
     async def setup_hook(self):
         """Set up the bot's components"""
         try:
-            # Set up OTP callback before initializing VRChat API
-            self.vrchat_api.set_otp_callback(self._request_otp)
-            
-            # Add cogs first
-            await self.add_cog(AnnouncementCog(self, self.config, self.ai_processor, self.scheduler, self.persistence))
+            # Add cogs (AnnouncementCog sets up its own OTP callback)
+            await self.add_cog(AnnouncementCog(self, self.config, self.ai_processor, self.scheduler, self.persistence, self.vrchat_api))
             await self.add_cog(AdminCog(self, self.config, self.scheduler))
             await self.add_cog(GeneralCog(self))
 
@@ -159,77 +154,23 @@ class VRChatAnnounceBot(commands.Bot):
 
             # Initialize VRChat API after bot is ready
             auth_result = await self.vrchat_api.initialize()
-            if not auth_result.get('success', False):
-                error_msg = auth_result.get('error', 'Unknown error')
-                logger.error(Messages.Log.VRC_API_INIT_FAIL.format(error_msg))
+            if not auth_result.success:
+                logger.error(Messages.Log.VRC_API_INIT_FAIL.format(auth_result.error or 'Unknown error'))
                 return
-                
+
             logger.info(Messages.Log.VRC_API_INIT_SUCCESS)
             if channel:
-                display_name = auth_result.get('display_name', 'Unknown')
-                await channel.send(Messages.Discord.LOGGED_IN.format(display_name))
+                await channel.send(Messages.Discord.LOGGED_IN.format(auth_result.display_name or 'Unknown'))
             
         except Exception as e:
             logger.error(Messages.Log.VRC_API_INIT_ERROR.format(e))
             logger.error(f"Stack trace:\n{traceback.format_exc()}")
     
-    async def _request_otp(self, otp_type):
-        """Request OTP from admin through Discord"""
-        # Get the first channel from config
-        channel = self.get_channel(self.config['discord']['channel_ids'][0])
-        if not channel:
-            logger.error(Messages.Log.OTP_CHANNEL_NOT_FOUND)
-            return None
-            
-        # Create a unique request ID
-        request_id = str(uuid.uuid4())
-        
-        # Create a future to wait for the response
-        future = asyncio.Future()
-        self.otp_requests[request_id] = future
-        
-        # Send OTP request message with role mention
-        role_mention = f"<@&{self.config['discord']['admin_role_id']}>"
-        message = await channel.send(Messages.Discord.OTP_REQUEST.format(role_mention=role_mention, otp_type=otp_type))
-        
-        try:
-            # Wait for response with timeout
-            otp = await asyncio.wait_for(future, timeout=300)  # 5 minute timeout
-            if otp:
-                # Edit the original message to remove the mention
-                await message.edit(content=Messages.Discord.OTP_REQUEST_EDITED.format(otp_type=otp_type))
-            return otp
-        except asyncio.TimeoutError:
-            await message.edit(content=Messages.Discord.OTP_TIMEOUT.format(role_mention=role_mention))
-            return None
-        finally:
-            # Clean up
-            if request_id in self.otp_requests:
-                del self.otp_requests[request_id]
-    
     async def on_message(self, message):
         """Handle incoming messages"""
-        # Ignore bot messages
         if message.author.bot:
             return
-            
-        # Check if this is an OTP response
-        if message.channel.id in self.config['discord']['channel_ids']:
-            # Check if the user has admin role
-            member = await message.guild.fetch_member(message.author.id)
-            if member and self.config['discord']['admin_role_id'] in [role.id for role in member.roles]:
-                # Check if this is a response to an OTP request
-                for request_id, future in list(self.otp_requests.items()):
-                    if not future.done():
-                        # Set the OTP value
-                        future.set_result(message.content.strip())
-                        # Delete the message for security
-                        await message.delete()
-                        return
-        
-        # Process all commands regardless of mentions
-        # This allows admin commands like !list and !cancel to work without a mention
-        # Note: Announcement requests still require a mention as that's handled in AnnouncementCog
+
         await self.process_commands(message)
 
     @tasks.loop(minutes=60)
