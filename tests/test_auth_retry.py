@@ -2,6 +2,7 @@ import asyncio
 import unittest
 from unittest.mock import MagicMock, AsyncMock, patch
 from utils.vrchat_api import VRChatAPI
+from utils.models import AuthResult, ApiResult
 from vrchatapi.exceptions import UnauthorizedException, ApiException
 from utils.messages import Messages
 
@@ -51,7 +52,7 @@ class TestVRChatAPIAuth(unittest.IsolatedAsyncioTestCase):
         result = await self.api._authenticate()
 
         # Verify
-        self.assertTrue(result['success'])
+        self.assertTrue(result.success)
         self.assertEqual(auth_api.verify2_fa.call_count, 2)
         self.assertEqual(self.api.otp_callback.call_count, 2)
 
@@ -65,14 +66,14 @@ class TestVRChatAPIAuth(unittest.IsolatedAsyncioTestCase):
         auth_api.get_current_user.side_effect = unauth_exc
 
         # Mock _authenticate to succeed
-        self.api._authenticate = AsyncMock(return_value={'success': True, 'reauthenticated': True})
+        self.api._authenticate = AsyncMock(return_value=AuthResult(success=True, reauthenticated=True))
 
         # Run
         result = await self.api.check_auth_status()
 
         # Verify
-        self.assertTrue(result['success'])
-        self.assertTrue(result.get('reauthenticated'))
+        self.assertTrue(result.success)
+        self.assertTrue(result.reauthenticated)
         self.api._authenticate.assert_called_once()
 
     @patch('utils.vrchat_api.GroupsApi')
@@ -89,13 +90,13 @@ class TestVRChatAPIAuth(unittest.IsolatedAsyncioTestCase):
         ]
 
         # Mock _authenticate to succeed
-        self.api._authenticate = AsyncMock(return_value={'success': True})
+        self.api._authenticate = AsyncMock(return_value=AuthResult(success=True))
 
         # Run
         result = await self.api.post_announcement("Title", "Content")
 
         # Verify
-        self.assertTrue(result['success'])
+        self.assertTrue(result.success)
         self.assertEqual(groups_api.add_group_post.call_count, 2)
         self.api._authenticate.assert_called_once()
 

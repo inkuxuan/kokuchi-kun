@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 import pytz
 from dateutil import parser
 from utils.messages import Messages
+from utils.models import AIProcessingResult
 
 logger = logging.getLogger(__name__)
 
@@ -16,20 +17,20 @@ class AIProcessor:
         openai.api_key = self.api_key
         openai.api_base = "https://openrouter.ai/api/v1"
         
-    async def process_announcement(self, message_content):
+    async def process_announcement(self, message_content) -> AIProcessingResult:
         """Process the announcement message and extract details"""
         try:
             logger.info(Messages.Log.AI_PROCESSING)
-            
+
             # Prepare the prompt
             prompt = self.prompt.replace("__message_content__", message_content)
-            
+
             # Call OpenRouter API
             headers = {
                 "HTTP-Referer": "https://vrchat-announce-bot.example.com",
                 "X-Title": "VRChat Announcement Bot"
             }
-            
+
             response = await openai.AsyncOpenAI(
                 base_url="https://openrouter.ai/api/v1",
                 api_key=self.api_key,
@@ -40,11 +41,11 @@ class AIProcessor:
                     {"role": "user", "content": prompt}
                 ]
             )
-            
+
             # Extract the response
             ai_response = response.choices[0].message.content
             logger.info(Messages.Log.AI_RAW_RESPONSE.format(ai_response))
-            
+
             # Clean up markdown if present
             if "```" in ai_response:
                 # Extract content between code blocks
@@ -54,16 +55,16 @@ class AIProcessor:
                         if ai_response.startswith("json"):
                             ai_response = ai_response[4:].strip()
                         break
-            
+
             # Parse the JSON
             parsed_response = json.loads(ai_response)
             logger.info(Messages.Log.AI_PARSED_RESPONSE.format(parsed_response))
-            
+
             jst = pytz.timezone('Asia/Tokyo')
-            
+
             # Extract Announcement Time
             if not parsed_response.get('announcement_date') or not parsed_response.get('announcement_time'):
-                 return {"success": False, "error": Messages.Error.AI_ANNOUNCEMENT_TIME_FAIL}
+                return AIProcessingResult(success=False, error=Messages.Error.AI_ANNOUNCEMENT_TIME_FAIL)
 
             ann_dt_str = f"{parsed_response['announcement_date']} {parsed_response['announcement_time']}"
             ann_dt = parser.parse(ann_dt_str)
@@ -72,7 +73,7 @@ class AIProcessor:
 
             # Extract Event Start Time
             if not parsed_response.get('event_start_date') or not parsed_response.get('event_start_time'):
-                 return {"success": False, "error": Messages.Error.AI_EVENT_TIME_FAIL}
+                return AIProcessingResult(success=False, error=Messages.Error.AI_EVENT_TIME_FAIL)
 
             event_start_str = f"{parsed_response['event_start_date']} {parsed_response['event_start_time']}"
             event_start_dt = parser.parse(event_start_str)
@@ -93,22 +94,22 @@ class AIProcessor:
             # Extract title and event_title, applying truncation
             title = parsed_response["title"][:128]
             event_title = parsed_response.get("event_title", title)
-            if not event_title: # Handle empty string case
-                 event_title = title
+            if not event_title:
+                event_title = title
             event_title = event_title[:128]
 
-            return {
-                "success": True,
-                "timestamp": announcement_timestamp, # Kept for backward compatibility logic in cog
-                "announcement_timestamp": announcement_timestamp,
-                "event_start_timestamp": event_start_timestamp,
-                "event_end_timestamp": event_end_timestamp,
-                "formatted_date_time": ann_dt.strftime('%Y年%m月%d日 %H:%M'),
-                "title": title,
-                "event_title": event_title,
-                "content": parsed_response["content"]
-            }
-            
+            return AIProcessingResult(
+                success=True,
+                timestamp=announcement_timestamp,
+                announcement_timestamp=announcement_timestamp,
+                event_start_timestamp=event_start_timestamp,
+                event_end_timestamp=event_end_timestamp,
+                formatted_date_time=ann_dt.strftime('%Y年%m月%d日 %H:%M'),
+                title=title,
+                event_title=event_title,
+                content=parsed_response["content"],
+            )
+
         except Exception as e:
             logger.error(Messages.Log.AI_PROCESS_ERROR.format(e))
-            return {"success": False, "error": Messages.Error.AI_ERROR.format(str(e))}
+            return AIProcessingResult(success=False, error=Messages.Error.AI_ERROR.format(str(e)))

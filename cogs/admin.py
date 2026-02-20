@@ -47,13 +47,13 @@ class AdminCog(commands.Cog):
         
         for job in jobs:
             # Trim content if too long
-            content = job["content"]
+            content = job.content
             if len(content) > 100:
                 content = content[:97] + "..."
-                
+
             embed.add_field(
-                name=f"ID: {job['id']} - <t:{int(job['timestamp'])}:F>",
-                value=f"タイトル: {job['title']}\n内容: {content}",
+                name=f"ID: {job.id} - <t:{int(job.timestamp)}:F>",
+                value=f"タイトル: {job.title}\n内容: {content}",
                 inline=False
             )
             

@@ -38,15 +38,15 @@ async def test_process_announcement_success(ai_processor):
 
         result = await ai_processor.process_announcement("Test message")
 
-        assert result['success'] is True
-        assert result['title'] == "Test Event"
-        assert result['content'] == "Test Content"
-        assert result['event_title'] == "Test Event" # Fallback check
+        assert result.success is True
+        assert result.title == "Test Event"
+        assert result.content == "Test Content"
+        assert result.event_title == "Test Event" # Fallback check
 
         # Verify timestamps (approximate check due to timezone complexity in test env vs implementation)
         # Just check relative order
-        assert result['announcement_timestamp'] < result['event_start_timestamp']
-        assert result['event_start_timestamp'] < result['event_end_timestamp']
+        assert result.announcement_timestamp < result.event_start_timestamp
+        assert result.event_start_timestamp < result.event_end_timestamp
 
         # Check specific values (JST is UTC+9)
         # Announcement: 2023-10-27 20:00 JST -> 2023-10-27 11:00 UTC
@@ -54,7 +54,7 @@ async def test_process_announcement_success(ai_processor):
 
         jst = pytz.timezone('Asia/Tokyo')
         ann_dt = jst.localize(datetime(2023, 10, 27, 20, 0))
-        assert result['announcement_timestamp'] == int(ann_dt.timestamp())
+        assert result.announcement_timestamp == int(ann_dt.timestamp())
 
 @pytest.mark.asyncio
 async def test_process_announcement_with_event_title(ai_processor):
@@ -79,9 +79,9 @@ async def test_process_announcement_with_event_title(ai_processor):
 
         result = await ai_processor.process_announcement("Test message")
 
-        assert result['success'] is True
-        assert result['title'] == "Application Title"
-        assert result['event_title'] == "Event Title"
+        assert result.success is True
+        assert result.title == "Application Title"
+        assert result.event_title == "Event Title"
 
 @pytest.mark.asyncio
 async def test_process_announcement_truncation(ai_processor):
@@ -106,11 +106,11 @@ async def test_process_announcement_truncation(ai_processor):
 
         result = await ai_processor.process_announcement("Test message")
 
-        assert result['success'] is True
-        assert len(result['title']) == 128
-        assert len(result['event_title']) == 128
-        assert result['title'] == "A" * 128
-        assert result['event_title'] == "B" * 128
+        assert result.success is True
+        assert len(result.title) == 128
+        assert len(result.event_title) == 128
+        assert result.title == "A" * 128
+        assert result.event_title == "B" * 128
 
 @pytest.mark.asyncio
 async def test_process_announcement_missing_end_time(ai_processor):
@@ -132,9 +132,9 @@ async def test_process_announcement_missing_end_time(ai_processor):
 
         result = await ai_processor.process_announcement("Test message")
 
-        assert result['success'] is True
+        assert result.success is True
         # Check if end time is start time + 1 hour
-        assert result['event_end_timestamp'] == result['event_start_timestamp'] + 3600
+        assert result.event_end_timestamp == result.event_start_timestamp + 3600
 
 @pytest.mark.asyncio
 async def test_process_announcement_missing_required_fields(ai_processor):
@@ -152,5 +152,5 @@ async def test_process_announcement_missing_required_fields(ai_processor):
 
         result = await ai_processor.process_announcement("Test message")
 
-        assert result['success'] is False
-        assert "抽出が失敗しました" in result['error']
+        assert result.success is False
+        assert "抽出が失敗しました" in result.error
