@@ -95,6 +95,12 @@ class AdminCog(commands.Cog):
     )
     async def cancel_job(self, ctx, job_id: str):
         """Cancel a scheduled announcement"""
+        # Verify the job belongs to this guild before cancelling
+        job = self.scheduler.get_job(job_id)
+        if job is None or job.guild_id != str(ctx.guild.id):
+            await ctx.reply(Messages.Discord.JOB_NOT_FOUND.format(job_id))
+            return
+
         result = self.scheduler.cancel_job(job_id)
 
         if result:
