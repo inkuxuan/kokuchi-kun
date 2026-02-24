@@ -27,6 +27,7 @@ async def test_schedule_announcement_stores_event_title(scheduler):
         "Application Title",
         "Content",
         "msg_123",
+        "111111111",
         event_start_timestamp=start_ts,
         event_end_timestamp=end_ts,
         event_title="Event Title"
@@ -50,7 +51,8 @@ async def test_schedule_announcement_default_event_title(scheduler):
         timestamp,
         "Application Title",
         "Content",
-        "msg_124"
+        "msg_124",
+        "111111111"
     )
 
     job = scheduler.jobs[job_id]
@@ -66,6 +68,7 @@ async def test_scheduler_persistence_format(scheduler):
         "Title",
         "Content",
         "msg_123",
+        "111111111",
         event_start_timestamp=timestamp+100,
         event_end_timestamp=timestamp+200,
         event_title="Event Title"
@@ -89,6 +92,7 @@ async def test_restore_jobs(scheduler):
         'timestamp': future_time,
         'title': 'Restored Job',
         'content': 'Content',
+        'guild_id': '111111111',
         'status': 'pending',
         'event_start_timestamp': future_time + 100,
         'event_end_timestamp': future_time + 200,
@@ -113,6 +117,7 @@ async def test_restore_legacy_jobs(scheduler):
         'timestamp': future_time,
         'title': 'Legacy Job',
         'content': 'Content',
+        'guild_id': '111111111',
         'status': 'pending'
     }]
 
