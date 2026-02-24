@@ -1,11 +1,16 @@
 import asyncio
 import logging
+import warnings
 import yaml
 import os
 import shutil
 import sys
 import argparse
 from dotenv import load_dotenv
+
+# Suppress SyntaxWarning from third-party vrchatapi package (invalid escape sequences in rest.py)
+warnings.filterwarnings("ignore", category=SyntaxWarning, module=r"vrchatapi\..*")
+
 import discord
 from discord.ext import commands, tasks
 import traceback
@@ -212,7 +217,16 @@ class VRChatAnnounceBot(commands.Bot):
             # Initialize VRChat API after bot is ready
             auth_result = await self.vrchat_api.initialize()
             if not auth_result.success:
-                logger.error(Messages.Log.VRC_API_INIT_FAIL.format(auth_result.error or 'Unknown error'))
+                error_msg = auth_result.error or 'Unknown error'
+                logger.error(Messages.Log.VRC_API_INIT_FAIL.format(error_msg))
+                # DM the admin user about login failure
+                admin_id = self.config['discord'].get('admin_id')
+                if admin_id:
+                    try:
+                        admin_user = await self.fetch_user(int(admin_id))
+                        await admin_user.send(Messages.Discord.LOGIN_FAIL.format(error_msg))
+                    except Exception as dm_err:
+                        logger.error(Messages.Log.LOGIN_FAIL_DM_ERROR.format(dm_err))
                 return
 
             logger.info(Messages.Log.VRC_API_INIT_SUCCESS)

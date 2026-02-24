@@ -81,6 +81,7 @@ class Messages:
         TOTP_INVALID = "Invalid TOTP code provided, asking again..."
         USERNAME_MISMATCH = "Cookie session belongs to '{}' but configured account is '{}', invalidating cached session"
         COOKIES_INVALIDATED = "Cached session cookies invalidated"
+        LOGIN_FAIL_DM_ERROR = "Failed to DM admin about login failure: {}"
 
     class Discord:
         # Shared
@@ -91,8 +92,9 @@ class Messages:
         OTP_REQUEST_DM = "VRChatの認証に{otp_type}が必要です。このメッセージに返信（Reply）して認証コードを送信してください。"
         OTP_TIMEOUT_DM = "OTPリクエストがタイムアウトしました。"
         GUILD_DISABLED = "このサーバーでは現在、新しい告知リクエストを受け付けていません。"
-        BOT_ONLINE = "Bot is online! 🟢"
+        BOT_ONLINE = "Bot is online! 🟢 \nNow logging in VRChat..."
         LOGGED_IN = "Logged into VRChat as {} ✅\nManaging group: {}"
+        LOGIN_FAIL = "⚠️ VRChat login failed: {}"
 
         # Announcement Cog
         ALREADY_BOOKED = "この告知は既に予約されています。"
