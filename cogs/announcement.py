@@ -18,10 +18,10 @@ class AnnouncementCog(commands.Cog):
         self.scheduler = scheduler
         self.vrchat_api = vrchat_api
 
-        # Per-guild config lookup: guild_id (int or None) -> config dict
+        # Per-guild config lookup: guild_id (str) -> config dict
         self.guild_configs = {}
         for guild_conf in config['discord'].get('guilds', []):
-            gid = guild_conf.get('guild_id')
+            gid = guild_conf['guild_id']  # str after normalization
             self.guild_configs[gid] = guild_conf
 
         # Build flat set of all monitored channel IDs for quick lookup
@@ -41,10 +41,10 @@ class AnnouncementCog(commands.Cog):
         self.fast_forward_emoji = config['discord'].get('fast_forward_emoji', "⏩")
         self.calendar_emoji = config['discord'].get('calendar_emoji', "📅")
 
-        # OTP DM user ID (single user receives OTP regardless of guild)
-        self.otp_dm_user_id = config['discord'].get('otp_dm_user_id')
+        # Admin user ID (receives OTP DMs and config warnings)
+        self.admin_id = config['discord'].get('admin_id')
 
-        self.otp_requests = {}  # Store OTP requests and their futures
+        self.otp_requests = {}  # request_id -> {'future': Future, 'message_id': int}
 
         # Set up OTP callback for VRChat API
         self.vrchat_api.set_otp_callback(self._request_otp)
@@ -57,16 +57,8 @@ class AnnouncementCog(commands.Cog):
     # --- Guild config helpers ---
 
     def _get_guild_config(self, guild_id):
-        """Return the config for a guild, or None if not configured.
-
-        Supports exact guild_id match and a fallback None-keyed entry (old single-guild compat).
-        """
-        if guild_id in self.guild_configs:
-            return self.guild_configs[guild_id]
-        # Fallback: a None-keyed guild config matches any guild (backward compat)
-        if None in self.guild_configs:
-            return self.guild_configs[None]
-        return None
+        """Return the config for a guild, or None if not configured."""
+        return self.guild_configs.get(guild_id)
 
     def _get_state(self, guild_id):
         """Return (or lazily create) the AnnouncementState for a guild."""
@@ -76,19 +68,7 @@ class AnnouncementCog(commands.Cog):
 
     def _get_persistence(self, guild_id):
         """Return the Persistence for a guild."""
-        # Exact match first, then None-keyed fallback
-        if guild_id in self.guild_persistences:
-            return self.guild_persistences[guild_id]
-        if None in self.guild_persistences:
-            return self.guild_persistences[None]
-        return None
-
-    def _get_channel_guild_id(self, channel_id):
-        """Given a channel_id, return the guild_id that owns it (or None for compat)."""
-        for gid, guild_conf in self.guild_configs.items():
-            if channel_id in guild_conf.get('channel_ids', []):
-                return gid
-        return None
+        return self.guild_persistences.get(guild_id)
 
     def _is_guild_enabled(self, guild_id):
         """Return True if the guild is enabled for new announcement requests."""
@@ -117,7 +97,7 @@ class AnnouncementCog(commands.Cog):
             persistence = self._get_persistence(gid)
             if persistence:
                 await state.save(persistence)
-                await persistence.save_data('jobs', self.scheduler.get_jobs_data(guild_id=str(gid)))
+                await persistence.save_data('jobs', self.scheduler.get_jobs_data(guild_id=gid))
 
     async def load_state(self, guild_id):
         """Load state from Firestore for a specific guild."""
@@ -131,12 +111,12 @@ class AnnouncementCog(commands.Cog):
         jobs_data = await persistence.load_data('jobs', [])
         restored_count, skipped_jobs = self.scheduler.restore_jobs(
             jobs_data,
-            guild_id=str(guild_id) if guild_id else None
+            guild_id=guild_id
         )
 
         # Rebuild queued_announcements from restored jobs
         state.queued_announcements = set()
-        for job in self.scheduler.list_jobs(guild_id=str(guild_id) if guild_id else None):
+        for job in self.scheduler.list_jobs(guild_id=guild_id):
             if job.message_id:
                 state.queued_announcements.add(job.message_id)
 
@@ -149,7 +129,7 @@ class AnnouncementCog(commands.Cog):
         try:
             message_id = job_data.get('message_id')
             status = job_data.get('status', 'success')
-            guild_id = int(job_data['guild_id'])
+            guild_id = job_data['guild_id']
 
             if message_id and status == 'success':
                 state = self._get_state(guild_id)
@@ -164,18 +144,14 @@ class AnnouncementCog(commands.Cog):
     # --- OTP handling ---
 
     async def _request_otp(self, otp_type):
-        """Request OTP from the configured DM user"""
-        if not self.otp_dm_user_id:
+        """Request OTP from the configured admin user via DM"""
+        if not self.admin_id:
             logger.error(Messages.Log.OTP_DM_USER_NOT_CONFIGURED)
             return None
 
         try:
-            user = await self.bot.fetch_user(self.otp_dm_user_id)
+            user = await self.bot.fetch_user(int(self.admin_id))
         except Exception:
-            logger.error(Messages.Log.OTP_DM_USER_NOT_FOUND)
-            return None
-
-        if not user:
             logger.error(Messages.Log.OTP_DM_USER_NOT_FOUND)
             return None
 
@@ -184,11 +160,13 @@ class AnnouncementCog(commands.Cog):
 
         # Create a future to wait for the response
         future = asyncio.Future()
-        self.otp_requests[request_id] = future
 
         # Open DM channel and send request
         dm_channel = await user.create_dm()
         message = await dm_channel.send(Messages.Discord.OTP_REQUEST_DM.format(otp_type=otp_type))
+
+        # Store request with the sent message ID for reply-to verification
+        self.otp_requests[request_id] = {'future': future, 'message_id': message.id}
 
         try:
             # Wait for response with timeout
@@ -208,6 +186,20 @@ class AnnouncementCog(commands.Cog):
     async def on_ready(self):
         """Called when the bot is ready"""
         try:
+            # Validate configured channel IDs
+            invalid_channels = []
+            for cid in self._all_channel_ids:
+                if not self.bot.get_channel(int(cid)):
+                    invalid_channels.append(cid)
+            if invalid_channels and self.admin_id:
+                try:
+                    admin_user = await self.bot.fetch_user(int(self.admin_id))
+                    dm = await admin_user.create_dm()
+                    listing = "\n".join(f"- {cid}" for cid in invalid_channels)
+                    await dm.send(Messages.Discord.INVALID_CHANNELS_WARNING.format(listing))
+                except Exception:
+                    logger.warning(f"Could not DM admin about invalid channels: {invalid_channels}")
+
             for gid, guild_conf in self.guild_configs.items():
                 channel_ids = guild_conf.get('channel_ids', [])
                 if not channel_ids:
@@ -220,7 +212,7 @@ class AnnouncementCog(commands.Cog):
                 await self.save_state(gid)
 
                 # Send restoration message to first channel
-                channel = self.bot.get_channel(channel_ids[0])
+                channel = self.bot.get_channel(int(channel_ids[0]))
                 if channel:
                     msg = Messages.Discord.RESTORATION_STATS.format(pending_count, restored_jobs)
                     await channel.send(msg)
@@ -240,21 +232,22 @@ class AnnouncementCog(commands.Cog):
         if message.author.bot:
             return
 
-        # Handle DM messages for OTP responses
+        # Handle DM messages for OTP responses (reply-to only)
         if isinstance(message.channel, discord.DMChannel):
-            if self.otp_dm_user_id and message.author.id == self.otp_dm_user_id:
-                for request_id, future in list(self.otp_requests.items()):
-                    if not future.done():
-                        future.set_result(message.content.strip())
-                        return
+            if self.admin_id and str(message.author.id) == self.admin_id:
+                if message.reference and message.reference.message_id:
+                    for request_id, request in list(self.otp_requests.items()):
+                        if not request['future'].done() and message.reference.message_id == request['message_id']:
+                            request['future'].set_result(message.content.strip())
+                            return
             return  # Ignore all other DMs
 
         # Only process guild messages from monitored channels
-        if message.channel.id not in self._all_channel_ids:
+        if str(message.channel.id) not in self._all_channel_ids:
             return
 
         # Determine which guild this channel belongs to
-        guild_id = message.guild.id
+        guild_id = str(message.guild.id)
 
         # Check if message mentions the bot and is an announcement request
         if self.bot.user.mentioned_in(message):
@@ -267,7 +260,7 @@ class AnnouncementCog(commands.Cog):
     async def _handle_announcement_request(self, message):
         """Handle a new announcement request"""
         try:
-            guild_id = message.guild.id
+            guild_id = str(message.guild.id)
             msg_id = str(message.id)
             state = self._get_state(guild_id)
 
@@ -296,7 +289,7 @@ class AnnouncementCog(commands.Cog):
             return
 
         # Check if the channel is a monitored channel
-        if payload.channel_id not in self._all_channel_ids:
+        if str(payload.channel_id) not in self._all_channel_ids:
             return
 
         channel = self.bot.get_channel(payload.channel_id)
@@ -304,7 +297,7 @@ class AnnouncementCog(commands.Cog):
             return
 
         # Determine guild_id for state lookup
-        guild_id = payload.guild_id
+        guild_id = str(payload.guild_id)
 
         emoji = str(payload.emoji)
         msg_id = str(payload.message_id)
@@ -380,14 +373,14 @@ class AnnouncementCog(commands.Cog):
             return
 
         # Check if the channel is a monitored channel
-        if payload.channel_id not in self._all_channel_ids:
+        if str(payload.channel_id) not in self._all_channel_ids:
             return
 
         channel = self.bot.get_channel(payload.channel_id)
         if not channel:
             return
 
-        guild_id = payload.guild_id
+        guild_id = str(payload.guild_id)
         emoji = str(payload.emoji)
 
         # Case: Removal of Calendar reaction
@@ -474,7 +467,7 @@ class AnnouncementCog(commands.Cog):
         """Check if a member has the admin role."""
         if not member or admin_role_id is None:
             return False
-        return admin_role_id in [role.id for role in member.roles]
+        return admin_role_id in [str(role.id) for role in member.roles]
 
     # --- Business logic ---
 
@@ -595,7 +588,7 @@ class AnnouncementCog(commands.Cog):
     async def _process_approved_announcement(self, message):
         """Process an approved announcement request"""
         try:
-            guild_id = message.guild.id
+            guild_id = str(message.guild.id)
             state = self._get_state(guild_id)
 
             # Send processing message
@@ -623,7 +616,7 @@ class AnnouncementCog(commands.Cog):
                 result.title,
                 result.content,
                 str(message.id),
-                guild_id=str(guild_id),
+                guild_id=guild_id,
                 event_start_timestamp=result.event_start_timestamp,
                 event_end_timestamp=result.event_end_timestamp,
                 event_title=result.event_title,

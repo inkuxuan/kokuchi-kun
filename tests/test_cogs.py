@@ -30,7 +30,7 @@ class TestCogs:
 
     @pytest.fixture
     def mock_config(self):
-        """Create a mock configuration using the new guilds format."""
+        """Create a mock configuration using the new guilds format with str IDs."""
         return {
             'discord': {
                 'prefix': '!',
@@ -38,10 +38,10 @@ class TestCogs:
                 'approval_reaction_emoji': "👍",
                 'fast_forward_emoji': "⏩",
                 'guilds': [{
-                    'guild_id': None,  # None-keyed entry matches any guild (backward compat)
+                    'guild_id': str(TEST_GUILD_ID),
                     'enabled': True,
-                    'channel_ids': [TEST_CHANNEL_ID],
-                    'admin_role_id': TEST_ADMIN_ROLE_ID,
+                    'channel_ids': [str(TEST_CHANNEL_ID)],
+                    'admin_role_id': str(TEST_ADMIN_ROLE_ID),
                     'firestore_server_id': 'test',
                 }]
             }
@@ -122,8 +122,7 @@ class TestCogs:
     @pytest.fixture
     def announcement_cog(self, mock_bot, mock_config, mock_ai_processor, mock_scheduler, mock_persistence, mock_vrchat_api):
         """Create an AnnouncementCog instance with mocks."""
-        # None-keyed persistence acts as fallback for any guild_id
-        guild_persistences = {None: mock_persistence}
+        guild_persistences = {str(TEST_GUILD_ID): mock_persistence}
         cog = AnnouncementCog(mock_bot, mock_config, mock_ai_processor, mock_scheduler, guild_persistences, mock_vrchat_api)
         return cog
 
@@ -238,7 +237,7 @@ class TestCogs:
         mock_message.add_reaction.assert_called_once_with(announcement_cog.seen_emoji)
 
         # Verify message was stored in pending_requests via state manager
-        guild_id = mock_message.guild.id
+        guild_id = str(mock_message.guild.id)
         assert announcement_cog._get_state(guild_id).is_pending(str(mock_message.id))
 
         # Verify persistence save was called
@@ -247,7 +246,7 @@ class TestCogs:
     @pytest.mark.asyncio
     async def test_announcement_approval(self, announcement_cog, mock_message, mock_admin_member):
         """Test approval of announcements via reactions."""
-        guild_id = mock_message.guild.id
+        guild_id = str(mock_message.guild.id)
 
         # Store a pending request (via state manager)
         announcement_cog._get_state(guild_id).add_pending(str(mock_message.id))
@@ -282,7 +281,7 @@ class TestCogs:
     @pytest.mark.asyncio
     async def test_duplicate_prevention_history(self, announcement_cog, mock_message):
         """Test that history prevents duplicate bookings."""
-        guild_id = mock_message.guild.id
+        guild_id = str(mock_message.guild.id)
 
         # Add message ID to history (via state manager)
         announcement_cog._get_state(guild_id).history.append(str(mock_message.id))
@@ -341,18 +340,19 @@ class TestCogs:
     @pytest.mark.asyncio
     async def test_job_completion_callback(self, announcement_cog, mock_persistence):
         """Test job completion callback logic."""
-        # Setup state under real guild ID
-        announcement_cog._get_state(TEST_GUILD_ID).queued_announcements.add('msg123')
+        # Setup state under str guild ID
+        str_guild_id = str(TEST_GUILD_ID)
+        announcement_cog._get_state(str_guild_id).queued_announcements.add('msg123')
 
-        # Call callback with guild_id (always present from Discord API)
-        job_data = {'message_id': 'msg123', 'status': 'success', 'guild_id': str(TEST_GUILD_ID)}
+        # Call callback with guild_id (always str)
+        job_data = {'message_id': 'msg123', 'status': 'success', 'guild_id': str_guild_id}
         await announcement_cog._on_job_complete(job_data)
 
         # Verify history update
-        assert announcement_cog._get_state(TEST_GUILD_ID).is_in_history('msg123')
+        assert announcement_cog._get_state(str_guild_id).is_in_history('msg123')
 
         # Verify removal from queue
-        assert not announcement_cog._get_state(TEST_GUILD_ID).is_queued('msg123')
+        assert not announcement_cog._get_state(str_guild_id).is_queued('msg123')
 
         # Verify persistence save
         mock_persistence.save_data.assert_called()
@@ -431,15 +431,15 @@ class TestCogs:
                 'approval_reaction_emoji': "👍",
                 'fast_forward_emoji': "⏩",
                 'guilds': [{
-                    'guild_id': None,
+                    'guild_id': str(TEST_GUILD_ID),
                     'enabled': False,  # Disabled
-                    'channel_ids': [TEST_CHANNEL_ID],
-                    'admin_role_id': TEST_ADMIN_ROLE_ID,
+                    'channel_ids': [str(TEST_CHANNEL_ID)],
+                    'admin_role_id': str(TEST_ADMIN_ROLE_ID),
                     'firestore_server_id': 'test',
                 }]
             }
         }
-        guild_persistences = {None: mock_persistence}
+        guild_persistences = {str(TEST_GUILD_ID): mock_persistence}
         cog = AnnouncementCog(mock_bot, config, mock_ai_processor, mock_scheduler, guild_persistences, mock_vrchat_api)
 
         # Simulate on_message with bot mention on monitored channel
@@ -452,4 +452,4 @@ class TestCogs:
         mock_message.reply.assert_called_once_with(Messages.Discord.GUILD_DISABLED)
 
         # Should NOT have added to pending state
-        assert not cog._get_state(TEST_GUILD_ID).is_pending(str(mock_message.id))
+        assert not cog._get_state(str(TEST_GUILD_ID)).is_pending(str(mock_message.id))
