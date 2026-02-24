@@ -16,18 +16,22 @@ DiscordのメッセージとリアクションだけでVRChatのグループ告�
 
 ```bash
 uv venv --python 3.12
-uv sync
 ```
 
 Copy `.prd.env.template` to `.env` and fill in credentials (Discord token, VRChat username/password, OpenRouter API key).
 
+Copy `config.yaml.template` to `config.yaml` and fill in configurations (Guild ID, Channel ID, User ID, VRChat Group ID).
+
+Setup Firestore and Application Default Credentials.
+
 ## Run
 
 ```bash
-python bot.py --env .env
+uv run --frozen bot.py
 ```
 
 ## Contributing
 
 See [AGENTS.md](AGENTS.md) for development environment setup, commands, architecture, and coding guidelines.
+
 
