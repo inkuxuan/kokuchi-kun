@@ -341,18 +341,18 @@ class TestCogs:
     @pytest.mark.asyncio
     async def test_job_completion_callback(self, announcement_cog, mock_persistence):
         """Test job completion callback logic."""
-        # Setup state under None key (matching job_data with no guild_id)
-        announcement_cog._get_state(None).queued_announcements.add('msg123')
+        # Setup state under real guild ID
+        announcement_cog._get_state(TEST_GUILD_ID).queued_announcements.add('msg123')
 
-        # Call callback (no guild_id → guild_id=None)
-        job_data = {'message_id': 'msg123', 'status': 'success'}
+        # Call callback with guild_id (always present from Discord API)
+        job_data = {'message_id': 'msg123', 'status': 'success', 'guild_id': str(TEST_GUILD_ID)}
         await announcement_cog._on_job_complete(job_data)
 
         # Verify history update
-        assert announcement_cog._get_state(None).is_in_history('msg123')
+        assert announcement_cog._get_state(TEST_GUILD_ID).is_in_history('msg123')
 
         # Verify removal from queue
-        assert not announcement_cog._get_state(None).is_queued('msg123')
+        assert not announcement_cog._get_state(TEST_GUILD_ID).is_queued('msg123')
 
         # Verify persistence save
         mock_persistence.save_data.assert_called()

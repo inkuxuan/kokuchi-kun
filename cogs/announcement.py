@@ -109,18 +109,15 @@ class AnnouncementCog(commands.Cog):
     async def save_state(self, guild_id=None):
         """Save the current state to Firestore for the given guild.
 
-        If guild_id is None, saves all guilds (used for backward compat).
+        If guild_id is None, saves all guilds.
         """
-        if guild_id is not None:
-            state = self._get_state(guild_id)
-            persistence = self._get_persistence(guild_id)
+        guilds_to_save = [guild_id] if guild_id is not None else list(self.guild_states.keys())
+        for gid in guilds_to_save:
+            state = self._get_state(gid)
+            persistence = self._get_persistence(gid)
             if persistence:
                 await state.save(persistence)
-                await persistence.save_data('jobs', self.scheduler.get_jobs_data(guild_id=str(guild_id) if guild_id else None))
-        else:
-            # Save all guilds
-            for gid in list(self.guild_states.keys()):
-                await self.save_state(gid)
+                await persistence.save_data('jobs', self.scheduler.get_jobs_data(guild_id=str(gid)))
 
     async def load_state(self, guild_id):
         """Load state from Firestore for a specific guild."""
@@ -152,9 +149,7 @@ class AnnouncementCog(commands.Cog):
         try:
             message_id = job_data.get('message_id')
             status = job_data.get('status', 'success')
-            raw_guild_id = job_data.get('guild_id')
-            # guild_id may be stored as str or int; normalize to int (or None)
-            guild_id = int(raw_guild_id) if raw_guild_id is not None else None
+            guild_id = int(job_data['guild_id'])
 
             if message_id and status == 'success':
                 state = self._get_state(guild_id)
@@ -259,7 +254,7 @@ class AnnouncementCog(commands.Cog):
             return
 
         # Determine which guild this channel belongs to
-        guild_id = message.guild.id if message.guild else None
+        guild_id = message.guild.id
 
         # Check if message mentions the bot and is an announcement request
         if self.bot.user.mentioned_in(message):
@@ -272,7 +267,7 @@ class AnnouncementCog(commands.Cog):
     async def _handle_announcement_request(self, message):
         """Handle a new announcement request"""
         try:
-            guild_id = message.guild.id if message.guild else None
+            guild_id = message.guild.id
             msg_id = str(message.id)
             state = self._get_state(guild_id)
 
@@ -309,7 +304,7 @@ class AnnouncementCog(commands.Cog):
             return
 
         # Determine guild_id for state lookup
-        guild_id = payload.guild_id if payload.guild_id else None
+        guild_id = payload.guild_id
 
         emoji = str(payload.emoji)
         msg_id = str(payload.message_id)
@@ -392,7 +387,7 @@ class AnnouncementCog(commands.Cog):
         if not channel:
             return
 
-        guild_id = payload.guild_id if payload.guild_id else None
+        guild_id = payload.guild_id
         emoji = str(payload.emoji)
 
         # Case: Removal of Calendar reaction
@@ -600,7 +595,7 @@ class AnnouncementCog(commands.Cog):
     async def _process_approved_announcement(self, message):
         """Process an approved announcement request"""
         try:
-            guild_id = message.guild.id if message.guild else None
+            guild_id = message.guild.id
             state = self._get_state(guild_id)
 
             # Send processing message
@@ -628,7 +623,7 @@ class AnnouncementCog(commands.Cog):
                 result.title,
                 result.content,
                 str(message.id),
-                guild_id=str(guild_id) if guild_id else None,
+                guild_id=str(guild_id),
                 event_start_timestamp=result.event_start_timestamp,
                 event_end_timestamp=result.event_end_timestamp,
                 event_title=result.event_title,

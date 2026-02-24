@@ -44,7 +44,7 @@ class AdminCog(commands.Cog):
             return False
 
         # Get the guild-specific admin_role_id
-        guild_id = ctx.guild.id if ctx.guild else None
+        guild_id = ctx.guild.id
         guild_conf = self._get_guild_config(guild_id)
         if not guild_conf:
             return False
@@ -61,9 +61,9 @@ class AdminCog(commands.Cog):
     )
     async def list_jobs(self, ctx):
         """List all scheduled announcements for the current guild"""
-        guild_id = ctx.guild.id if ctx.guild else None
+        guild_id = ctx.guild.id
         # Convert guild_id to str to match how jobs store it
-        str_guild_id = str(guild_id) if guild_id else None
+        str_guild_id = str(guild_id)
         jobs = self.scheduler.list_jobs(guild_id=str_guild_id)
 
         if not jobs:
@@ -107,7 +107,7 @@ class AdminCog(commands.Cog):
             # Persist the cancellation to Firestore
             announcement_cog = self.bot.get_cog('AnnouncementCog')
             if announcement_cog:
-                guild_id = ctx.guild.id if ctx.guild else None
+                guild_id = ctx.guild.id
                 await announcement_cog.save_state(guild_id)
             await ctx.reply(Messages.Discord.JOB_CANCELLED.format(job_id))
         else:
