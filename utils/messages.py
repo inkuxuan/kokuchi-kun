@@ -10,6 +10,8 @@ class Messages:
         BOT_SETUP_ERROR = "Error during bot setup: {}"
         BOT_READY = "Bot is ready! Logged in as {}"
         OTP_CHANNEL_NOT_FOUND = "Could not find channel for OTP request"
+        OTP_DM_USER_NOT_CONFIGURED = "otp_dm_user_id is not configured in config.yaml"
+        OTP_DM_USER_NOT_FOUND = "Could not find the user configured for OTP DM"
         DISCORD_TOKEN_NOT_FOUND = "Discord token not found in environment variables!"
         VRC_API_INIT_FAIL = "Failed to initialize VRChat API: {}"
         VRC_API_INIT_SUCCESS = "VRChat API initialized successfully"
@@ -84,6 +86,9 @@ class Messages:
         OTP_INVALID = "認証コードが間違っています。もう一度入力してください。"
         OTP_REQUEST_EDITED = "VRChatの認証に{otp_type}が必要です。認証コードを入力してください。"
         OTP_TIMEOUT = "{role_mention} OTPリクエストがタイムアウトしました。"
+        OTP_REQUEST_DM = "VRChatの認証に{otp_type}が必要です。認証コードをこのDMに返信してください。"
+        OTP_TIMEOUT_DM = "OTPリクエストがタイムアウトしました。"
+        GUILD_DISABLED = "このサーバーでは現在、新しい告知リクエストを受け付けていません。"
         BOT_ONLINE = "Bot is online! 🟢"
         LOGGED_IN = "Logged into VRChat as {} ✅"
 
