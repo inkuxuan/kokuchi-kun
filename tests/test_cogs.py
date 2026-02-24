@@ -64,6 +64,15 @@ class TestCogs:
             )
         ]
         scheduler.cancel_job = MagicMock(return_value=True)
+        scheduler.get_job = MagicMock(return_value=JobData(
+            id='job1',
+            title='Test Announcement',
+            content='This is a test announcement content.',
+            formatted_date_time='2023-03-27 12:00:00',
+            timestamp=1679918400,
+            message_id='123456789',
+            guild_id=str(TEST_GUILD_ID),
+        ))
         scheduler.schedule_announcement = AsyncMock(return_value='new_job_id')
         scheduler.restore_jobs = MagicMock(return_value=(0, []))
         scheduler.get_jobs_data = MagicMock(return_value=[])

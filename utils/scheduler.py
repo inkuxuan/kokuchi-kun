@@ -166,6 +166,10 @@ class Scheduler:
                     active_jobs.append(job)
         return active_jobs
 
+    def get_job(self, job_id):
+        """Get a job by its ID, or None if not found"""
+        return self.jobs.get(job_id)
+
     def cancel_job(self, job_id):
         """Cancel a scheduled job"""
         if job_id not in self.jobs:
