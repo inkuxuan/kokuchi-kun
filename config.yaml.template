@@ -12,7 +12,7 @@ discord:
       channel_ids:                       # Channels to monitor for announcement requests
         - 000000000000000000
       admin_role_id: 000000000000000000  # Role ID with admin privileges
-      firestore_server_id: "default"     # Unique identifier for this guild's state in Firestore
+      # firestore_server_id: "custom"   # Optional: override the Firestore key for this guild (defaults to guild_id)
 
 openrouter:
   model: "deepseek/deepseek-v3.2"
