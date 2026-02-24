@@ -33,6 +33,9 @@ wheels/
 
 vrchat_session.json
 
+# Runtime data (may contain user PII)
+data/
+
 # Claude Code
 .claude/
 
