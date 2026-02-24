@@ -24,23 +24,25 @@ class Scheduler:
         """Set callback for job completion (success or failure)"""
         self.on_job_completion = callback
         
-    async def schedule_announcement(self, timestamp, title, content, message_id, event_start_timestamp=None, event_end_timestamp=None, event_title=None):
+    async def schedule_announcement(self, timestamp, title, content, message_id, guild_id,
+                                    group_id=None,
+                                    event_start_timestamp=None, event_end_timestamp=None, event_title=None):
         """Schedule an announcement for the given timestamp"""
         job_id = str(uuid.uuid4())
         run_date = datetime.fromtimestamp(timestamp, tz=pytz.utc)
-        
+
         logger.info(Messages.Log.SCHEDULING_JOB.format(run_date, job_id))
-        
+
         # Add job to scheduler
         self.scheduler.add_job(
             self._post_announcement,
             'date',
             run_date=run_date,
-            args=[job_id, title, content],
+            args=[job_id, title, content, group_id],
             id=job_id,
             misfire_grace_time=3600  # Allow execution up to 1 hour late (immediate post for recent past)
         )
-        
+
         # Store job info
         if event_title is None:
             event_title = title
@@ -48,6 +50,8 @@ class Scheduler:
         self.jobs[job_id] = JobData(
             id=job_id,
             message_id=message_id,
+            guild_id=guild_id,
+            group_id=group_id,
             timestamp=timestamp,
             event_start_timestamp=event_start_timestamp,
             event_end_timestamp=event_end_timestamp,
@@ -56,10 +60,10 @@ class Scheduler:
             event_title=event_title,
             content=content,
         )
-        
+
         return job_id
         
-    async def _post_announcement(self, job_id, title, content):
+    async def _post_announcement(self, job_id, title, content, group_id):
         """Execute the announcement posting"""
         try:
             logger.info(Messages.Log.EXECUTING_JOB.format(job_id))
@@ -75,7 +79,7 @@ class Scheduler:
                     return
 
             # Post the announcement
-            result = await self.vrchat_api.post_announcement(title, content)
+            result = await self.vrchat_api.post_announcement(group_id, title, content)
 
             if result.success:
                 logger.info(Messages.Log.POST_SUCCESS.format('N/A'))
@@ -106,8 +110,11 @@ class Scheduler:
                 if self.on_job_completion:
                     await self.on_job_completion(self.jobs[job_id].to_dict())
     
-    def restore_jobs(self, jobs_list):
-        """Restore jobs from storage. Returns (restored_count, skipped_jobs_list)"""
+    def restore_jobs(self, jobs_list, guild_id=None, group_id=None):
+        """Restore jobs from storage. Returns (restored_count, skipped_jobs_list)
+
+        group_id is used as fallback for old jobs that don't have group_id stored.
+        """
         restored_count = 0
         skipped_jobs = []
         current_time = datetime.now(pytz.utc).timestamp()
@@ -122,18 +129,28 @@ class Scheduler:
                 job_id = job_data['id']
                 run_date = datetime.fromtimestamp(job_data['timestamp'], tz=pytz.utc)
 
+                # Restore to jobs dict
+                if 'event_title' not in job_data:
+                    job_data['event_title'] = job_data['title']
+
+                # Set guild_id if not in stored data (migration from pre-multi-guild)
+                if 'guild_id' not in job_data:
+                    job_data['guild_id'] = guild_id
+
+                # Set group_id if not in stored data (migration from pre-per-guild-group)
+                if not job_data.get('group_id'):
+                    job_data['group_id'] = group_id
+
+                effective_group_id = job_data.get('group_id')
+
                 # Add job to scheduler
                 self.scheduler.add_job(
                     self._post_announcement,
                     'date',
                     run_date=run_date,
-                    args=[job_id, job_data['title'], job_data['content']],
+                    args=[job_id, job_data['title'], job_data['content'], effective_group_id],
                     id=job_id
                 )
-
-                # Restore to jobs dict
-                if 'event_title' not in job_data:
-                    job_data['event_title'] = job_data['title']
 
                 self.jobs[job_id] = JobData.from_dict(job_data)
                 restored_count += 1
@@ -144,17 +161,25 @@ class Scheduler:
 
         return restored_count, skipped_jobs
 
-    def get_jobs_data(self):
-        """Get list of current jobs for persistence"""
-        return [job.to_dict() for job in self.jobs.values()]
+    def get_jobs_data(self, guild_id=None):
+        """Get list of current jobs for persistence, optionally filtered by guild_id"""
+        jobs = self.jobs.values()
+        if guild_id is not None:
+            jobs = [j for j in jobs if j.guild_id == guild_id]
+        return [job.to_dict() for job in jobs]
 
-    def list_jobs(self):
-        """List all active scheduled jobs"""
+    def list_jobs(self, guild_id=None):
+        """List all active scheduled jobs, optionally filtered by guild_id"""
         active_jobs = []
         for job in self.jobs.values():
             if self.scheduler.get_job(job.id) is not None:
-                active_jobs.append(job)
+                if guild_id is None or job.guild_id == guild_id:
+                    active_jobs.append(job)
         return active_jobs
+
+    def get_job(self, job_id):
+        """Get a job by its ID, or None if not found"""
+        return self.jobs.get(job_id)
 
     def cancel_job(self, job_id):
         """Cancel a scheduled job"""

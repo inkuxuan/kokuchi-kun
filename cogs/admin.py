@@ -2,7 +2,6 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 import logging
-from typing import Optional
 from utils.messages import Messages
 from utils.version import get_version
 
@@ -13,38 +12,61 @@ class AdminCog(commands.Cog):
         self.bot = bot
         self.config = config
         self.scheduler = scheduler
-        self.channel_ids = config['discord']['channel_ids']  # List of channel IDs to monitor
-        self.admin_role_id = config['discord']['admin_role_id']
+
+        # Per-guild config lookup: guild_id (str) -> config dict
+        self.guild_configs = {}
+        for guild_conf in config['discord'].get('guilds', []):
+            gid = guild_conf['guild_id']  # str after normalization
+            self.guild_configs[gid] = guild_conf
+
+        # Flat set of all monitored channel IDs (str) for quick permission checks
+        self._all_channel_ids = set()
+        for guild_conf in self.guild_configs.values():
+            self._all_channel_ids.update(guild_conf.get('channel_ids', []))
+
         self.prefix = config['discord']['prefix']
         self.version = get_version()
-    
+
+    def _get_guild_config(self, guild_id):
+        """Return the config for a guild, or None if not configured."""
+        return self.guild_configs.get(guild_id)
+
     async def cog_check(self, ctx):
         """Permission check that applies to all commands in this cog"""
         # Check if in one of the monitored channels
-        if ctx.channel.id not in self.channel_ids:
+        if str(ctx.channel.id) not in self._all_channel_ids:
             return False
-            
-        # Check for admin role
-        member = ctx.author
-        return discord.utils.get(member.roles, id=self.admin_role_id) is not None
-    
+
+        # Get the guild-specific admin_role_id
+        guild_id = str(ctx.guild.id)
+        guild_conf = self._get_guild_config(guild_id)
+        if not guild_conf:
+            return False
+
+        admin_role_id = guild_conf.get('admin_role_id')
+        if admin_role_id is None:
+            return False
+
+        return admin_role_id in [str(role.id) for role in ctx.author.roles]
+
     @commands.hybrid_command(
         name="list",
         description="List all scheduled announcements"
     )
     async def list_jobs(self, ctx):
-        """List all scheduled announcements"""
-        jobs = self.scheduler.list_jobs()
-        
+        """List all scheduled announcements for the current guild"""
+        guild_id = str(ctx.guild.id)
+        jobs = self.scheduler.list_jobs(guild_id=guild_id)
+
         if not jobs:
             await ctx.reply(Messages.Discord.NO_SCHEDULED_JOBS)
             return
-            
+
         embed = discord.Embed(
             title=Messages.Discord.SCHEDULED_JOBS_TITLE,
             color=discord.Color.blue()
         )
-        
+
         for job in jobs:
             # Trim content if too long
             content = job.content
@@ -56,26 +78,33 @@ class AdminCog(commands.Cog):
                 value=f"タイトル: {job.title}\n内容: {content}",
                 inline=False
             )
-            
+
         await ctx.reply(embed=embed)
-        
+
     @commands.hybrid_command(
         name="cancel",
         description="Cancel a scheduled announcement"
     )
     async def cancel_job(self, ctx, job_id: str):
         """Cancel a scheduled announcement"""
+        # Verify the job belongs to this guild before cancelling
+        guild_id = str(ctx.guild.id)
+        job = self.scheduler.get_job(job_id)
+        if job is None or job.guild_id != guild_id:
+            await ctx.reply(Messages.Discord.JOB_NOT_FOUND.format(job_id))
+            return
+
         result = self.scheduler.cancel_job(job_id)
 
         if result:
             # Persist the cancellation to Firestore
             announcement_cog = self.bot.get_cog('AnnouncementCog')
             if announcement_cog:
-                await announcement_cog.save_state()
+                await announcement_cog.save_state(guild_id)
             await ctx.reply(Messages.Discord.JOB_CANCELLED.format(job_id))
         else:
             await ctx.reply(Messages.Discord.JOB_NOT_FOUND.format(job_id))
-            
+
     @commands.hybrid_command(
         name="help",
         description="Display admin command help"
@@ -86,17 +115,17 @@ class AdminCog(commands.Cog):
             title=Messages.Discord.CMD_LIST_TITLE,
             color=discord.Color.blue()
         )
-        
+
         prefix = self.prefix
         embed.add_field(name=f"{prefix}list または /list", value=Messages.Discord.CMD_LIST_DESC, inline=False)
         embed.add_field(name=f"{prefix}cancel [ジョブID] または /cancel", value=Messages.Discord.CMD_CANCEL_DESC, inline=False)
         embed.add_field(name=f"{prefix}help または /help", value=Messages.Discord.CMD_HELP_DESC, inline=False)
-        
+
         # Add version information
         embed.set_footer(text=f"Version: {self.version}")
-        
+
         await ctx.reply(embed=embed)
-    
+
     async def cog_app_command_error(self, interaction, error):
         """Handle errors from slash commands"""
         if isinstance(error, app_commands.errors.CheckFailure):

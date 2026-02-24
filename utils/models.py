@@ -7,6 +7,7 @@ class AuthResult:
     success: bool
     error: str | None = None
     user_id: str | None = None
+    username: str | None = None
     display_name: str | None = None
     method: str | None = None
     reauthenticated: bool = False
@@ -40,7 +41,9 @@ class JobData:
     timestamp: float
     title: str
     content: str
+    guild_id: str
     status: str = "pending"
+    group_id: str | None = None
     event_start_timestamp: float | None = None
     event_end_timestamp: float | None = None
     event_title: str | None = None
@@ -57,7 +60,9 @@ class JobData:
             timestamp=d["timestamp"],
             title=d["title"],
             content=d["content"],
+            guild_id=d["guild_id"],
             status=d.get("status", "pending"),
+            group_id=d.get("group_id"),
             event_start_timestamp=d.get("event_start_timestamp"),
             event_end_timestamp=d.get("event_end_timestamp"),
             event_title=d.get("event_title"),

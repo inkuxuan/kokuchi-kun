@@ -1,12 +1,19 @@
 discord:
   prefix: "!"
-  channel_ids: # List of channel IDs to monitor (replace with your own)
-    - 000000000000000000
-  admin_role_id: 000000000000000000  # Replace with your admin role ID
   seen_reaction_emoji: "👀"
   approval_reaction_emoji: "👍"
   fast_forward_emoji: "⏩"
   calendar_emoji: "📅"
+  admin_id: 000000000000000000  # Discord User ID for the bot admin (receives OTP DMs and config warnings)
+
+  guilds:  # List of Discord servers (guilds) the bot serves
+    - guild_id: 000000000000000000      # Discord Server (Guild) ID
+      group_id: "grp_00000000-0000-0000-0000-000000000000"  # VRChat group ID for this guild
+      enabled: true                      # Set to false to disable new announcement requests (booked ones still post)
+      channel_ids:                       # Channels to monitor for announcement requests
+        - 000000000000000000
+      admin_role_id: 000000000000000000  # Role ID with admin privileges
+      # firestore_server_id: "custom"   # Optional: override the Firestore key for this guild (defaults to guild_id)
 
 openrouter:
   model: "deepseek/deepseek-v3.2"
@@ -56,11 +63,9 @@ openrouter:
 
 
 vrchat:
-  group_id: "grp_00000000-0000-0000-0000-000000000000"  # Replace with your VRChat group ID
   heartbeat_interval: 60 # minutes
 
 firestore:
-  server_id: "default"  # Identifier for this server's state in Firestore
-  servers_collection: "servers"  # Top-level collection for per-server state
+  servers_collection: "servers"  # Top-level collection for per-guild state
   shared_collection: "shared"    # Top-level collection for shared state (e.g. VRChat session)
-  state_subcollection: "state"   # Subcollection under each server document
+  state_subcollection: "state"   # Subcollection under each guild document

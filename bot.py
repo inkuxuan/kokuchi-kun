@@ -1,11 +1,16 @@
 import asyncio
 import logging
+import warnings
 import yaml
 import os
 import shutil
 import sys
 import argparse
 from dotenv import load_dotenv
+
+# Suppress SyntaxWarning from third-party vrchatapi package (invalid escape sequences in rest.py)
+warnings.filterwarnings("ignore", category=SyntaxWarning, module=r"vrchatapi\..*")
+
 import discord
 from discord.ext import commands, tasks
 import traceback
@@ -78,28 +83,37 @@ class VRChatAnnounceBot(commands.Bot):
         intents = discord.Intents.default()
         intents.message_content = True
         intents.reactions = True
-        
+
         super().__init__(
             command_prefix=config['discord']['prefix'],
             intents=intents,
             help_command=None  # Disable default help command
         )
-        
+
         self.config = config
         self.args = args
 
         # Add sensitive environment variables to config
         self._load_env_variables()
-        
+
+        # Validate and normalize config to ensure guilds list is present
+        self._normalize_config()
+
         # Initialize components
         firestore_config = self.config.get('firestore', {})
-        self.persistence = Persistence(
-            server_id=firestore_config.get('server_id', 'default'),
+
+        # Shared persistence for VRChat session (server_id is unused for shared ops)
+        self.shared_persistence = Persistence(
+            server_id='_shared',
             servers_collection=firestore_config.get('servers_collection', 'servers'),
             shared_collection=firestore_config.get('shared_collection', 'shared'),
             state_subcollection=firestore_config.get('state_subcollection', 'state'),
         )
-        self.vrchat_api = VRChatAPI(self.config['vrchat'], self.persistence)
+
+        # Per-guild persistences for announcement state
+        self.guild_persistences = self._build_guild_persistences()
+
+        self.vrchat_api = VRChatAPI(self.config['vrchat'], self.shared_persistence)
         self.scheduler = Scheduler(self.vrchat_api)
         self.ai_processor = AIProcessor(self.config['openrouter'])
 
@@ -108,64 +122,138 @@ class VRChatAnnounceBot(commands.Bot):
         if heartbeat_interval > 0:
             self.heartbeat_check.change_interval(minutes=heartbeat_interval)
             self.heartbeat_check.start()
-        
+
+    def _normalize_config(self):
+        """Validate config and normalize all IDs to str."""
+        discord_conf = self.config.get('discord', {})
+
+        if 'guilds' not in discord_conf:
+            logger.error(
+                "Config is using old format (no 'guilds' key). "
+                "Please update config.yaml to the new guilds format."
+            )
+            sys.exit(1)
+
+        # Normalize admin_id to str
+        if discord_conf.get('admin_id') is not None:
+            discord_conf['admin_id'] = str(discord_conf['admin_id'])
+
+        # Normalize per-guild IDs to str
+        for guild_conf in discord_conf['guilds']:
+            if guild_conf.get('guild_id') is None:
+                logger.error("Each guild in config.yaml must have a guild_id.")
+                sys.exit(1)
+            if guild_conf.get('group_id') is None:
+                logger.error("Each guild in config.yaml must have a group_id (VRChat group ID).")
+                sys.exit(1)
+            guild_conf['guild_id'] = str(guild_conf['guild_id'])
+            guild_conf['channel_ids'] = [str(c) for c in guild_conf.get('channel_ids', [])]
+            if guild_conf.get('admin_role_id') is not None:
+                guild_conf['admin_role_id'] = str(guild_conf['admin_role_id'])
+
+        self.config['discord'] = discord_conf
+
+    def _build_guild_persistences(self):
+        """Build a mapping of guild_id (str) -> Persistence for each configured guild."""
+        firestore_config = self.config.get('firestore', {})
+        persistences = {}
+        for guild_conf in self.config['discord']['guilds']:
+            gid = guild_conf['guild_id']  # already str after normalization
+            server_id = guild_conf.get('firestore_server_id', gid)
+            persistences[gid] = Persistence(
+                server_id=server_id,
+                servers_collection=firestore_config.get('servers_collection', 'servers'),
+                shared_collection=firestore_config.get('shared_collection', 'shared'),
+                state_subcollection=firestore_config.get('state_subcollection', 'state'),
+            )
+        return persistences
+
     def _load_env_variables(self):
         """Load sensitive data from environment variables into config"""
         # Discord
         self.config['discord']['token'] = os.getenv('DISCORD_TOKEN')
-        
+
         # OpenRouter - only load the API key, keep model in config
         if 'openrouter' not in self.config:
             self.config['openrouter'] = {}
         self.config['openrouter']['api_key'] = os.getenv('OPENROUTER_API_KEY')
         # Model remains in config.yaml
-        
+
         # VRChat
         if 'vrchat' not in self.config:
             self.config['vrchat'] = {}
         self.config['vrchat']['username'] = os.getenv('VRCHAT_USERNAME')
         self.config['vrchat']['password'] = os.getenv('VRCHAT_PASSWORD')
         # group_id is now loaded from config.yaml
-        
+
     async def setup_hook(self):
         """Set up the bot's components"""
         try:
             # Add cogs (AnnouncementCog sets up its own OTP callback)
-            await self.add_cog(AnnouncementCog(self, self.config, self.ai_processor, self.scheduler, self.persistence, self.vrchat_api))
+            await self.add_cog(AnnouncementCog(self, self.config, self.ai_processor, self.scheduler, self.guild_persistences, self.vrchat_api))
             await self.add_cog(AdminCog(self, self.config, self.scheduler))
             await self.add_cog(GeneralCog(self))
 
             await self.tree.sync()
             logger.info(Messages.Log.BOT_SETUP_SUCCESS)
-            
+
         except Exception as e:
             logger.error(Messages.Log.BOT_SETUP_ERROR.format(e))
             logger.error(f"Stack trace:\n{traceback.format_exc()}")
-    
+
     async def on_ready(self):
         """Called when the bot is ready and connected to Discord"""
         try:
             logger.info(Messages.Log.BOT_READY.format(self.user))
-            
-            # Send online message
-            channel = self.get_channel(self.config['discord']['channel_ids'][0])
-            if channel:
-                await channel.send(Messages.Discord.BOT_ONLINE)
+
+            # Send online message to the first channel of each configured guild
+            for guild_conf in self.config['discord']['guilds']:
+                channel_ids = guild_conf.get('channel_ids', [])
+                if channel_ids:
+                    channel = self.get_channel(int(channel_ids[0]))
+                    if channel:
+                        await channel.send(Messages.Discord.BOT_ONLINE)
 
             # Initialize VRChat API after bot is ready
             auth_result = await self.vrchat_api.initialize()
             if not auth_result.success:
-                logger.error(Messages.Log.VRC_API_INIT_FAIL.format(auth_result.error or 'Unknown error'))
+                error_msg = auth_result.error or 'Unknown error'
+                logger.error(Messages.Log.VRC_API_INIT_FAIL.format(error_msg))
+                # DM the admin user about login failure
+                admin_id = self.config['discord'].get('admin_id')
+                if admin_id:
+                    try:
+                        admin_user = await self.fetch_user(int(admin_id))
+                        await admin_user.send(Messages.Discord.LOGIN_FAIL.format(error_msg))
+                    except Exception as dm_err:
+                        logger.error(Messages.Log.LOGIN_FAIL_DM_ERROR.format(dm_err))
                 return
 
             logger.info(Messages.Log.VRC_API_INIT_SUCCESS)
-            if channel:
-                await channel.send(Messages.Discord.LOGGED_IN.format(auth_result.display_name or 'Unknown'))
-            
+
+            # Send login confirmation to first channel of each guild, with group name
+            display_name = auth_result.display_name or 'Unknown'
+            for guild_conf in self.config['discord']['guilds']:
+                channel_ids = guild_conf.get('channel_ids', [])
+                if not channel_ids:
+                    continue
+                channel = self.get_channel(int(channel_ids[0]))
+                if not channel:
+                    continue
+
+                group_id = guild_conf.get('group_id')
+                group_name = group_id  # fallback to raw ID
+                if group_id:
+                    group_result = await self.vrchat_api.get_group(group_id)
+                    if group_result.success:
+                        group_name = group_result.data['name']
+
+                await channel.send(Messages.Discord.LOGGED_IN.format(display_name, group_name))
+
         except Exception as e:
             logger.error(Messages.Log.VRC_API_INIT_ERROR.format(e))
             logger.error(f"Stack trace:\n{traceback.format_exc()}")
-    
+
     async def on_message(self, message):
         """Handle incoming messages"""
         if message.author.bot:
@@ -198,7 +286,7 @@ async def main():
 
     # Load environment from specified file
     load_environment(args.env)
-    
+
     # Load configuration
     try:
         with open('config.yaml', 'r', encoding='utf-8') as f:
@@ -206,7 +294,7 @@ async def main():
     except Exception as e:
         logger.error(Messages.Log.CONFIG_LOAD_FAIL.format(e))
         return
-    
+
     # Create and start the bot
     bot = VRChatAnnounceBot(config, args)
     try:

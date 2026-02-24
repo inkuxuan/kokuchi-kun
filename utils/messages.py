@@ -10,6 +10,8 @@ class Messages:
         BOT_SETUP_ERROR = "Error during bot setup: {}"
         BOT_READY = "Bot is ready! Logged in as {}"
         OTP_CHANNEL_NOT_FOUND = "Could not find channel for OTP request"
+        OTP_DM_USER_NOT_CONFIGURED = "admin_id is not configured in config.yaml"
+        OTP_DM_USER_NOT_FOUND = "Could not find the user configured for OTP DM"
         DISCORD_TOKEN_NOT_FOUND = "Discord token not found in environment variables!"
         VRC_API_INIT_FAIL = "Failed to initialize VRChat API: {}"
         VRC_API_INIT_SUCCESS = "VRChat API initialized successfully"
@@ -77,6 +79,9 @@ class Messages:
         HEARTBEAT_REAUTH_FAIL = "Re-authentication triggered by heartbeat failed: {}"
         REAUTH_TRIGGERED = "Re-authentication triggered by {}"
         TOTP_INVALID = "Invalid TOTP code provided, asking again..."
+        USERNAME_MISMATCH = "Cookie session belongs to '{}' but configured account is '{}', invalidating cached session"
+        COOKIES_INVALIDATED = "Cached session cookies invalidated"
+        LOGIN_FAIL_DM_ERROR = "Failed to DM admin about login failure: {}"
 
     class Discord:
         # Shared
@@ -84,8 +89,12 @@ class Messages:
         OTP_INVALID = "認証コードが間違っています。もう一度入力してください。"
         OTP_REQUEST_EDITED = "VRChatの認証に{otp_type}が必要です。認証コードを入力してください。"
         OTP_TIMEOUT = "{role_mention} OTPリクエストがタイムアウトしました。"
-        BOT_ONLINE = "Bot is online! 🟢"
-        LOGGED_IN = "Logged into VRChat as {} ✅"
+        OTP_REQUEST_DM = "VRChatの認証に{otp_type}が必要です。このメッセージに返信（Reply）して認証コードを送信してください。"
+        OTP_TIMEOUT_DM = "OTPリクエストがタイムアウトしました。"
+        GUILD_DISABLED = "このサーバーでは現在、新しい告知リクエストを受け付けていません。"
+        BOT_ONLINE = "Bot is online! 🟢 \nNow logging in VRChat..."
+        LOGGED_IN = "Logged into VRChat as {} ✅\nManaging group: {}"
+        LOGIN_FAIL = "⚠️ VRChat login failed: {}"
 
         # Announcement Cog
         ALREADY_BOOKED = "この告知は既に予約されています。"
@@ -105,6 +114,7 @@ class Messages:
         IMMEDIATE_POST_FAIL = "即時投稿に失敗しました: {}"
         IMMEDIATE_POST_EXECUTED = "この告知は即時投稿されました。"
         PAST_TIME_WARNING = "{mentions} 予約された告知の時刻は既に過ぎています、ご確認の上、再度予約してください。"
+        INVALID_CHANNELS_WARNING = "⚠️ The following configured channel IDs could not be found:\n{}\nPlease check your config.yaml."
         RESTORATION_STATS = "{} pending, {} booked announcements restored"
         SKIPPED_JOBS = "⚠️ Skipped {} announcements that were scheduled while offline:\n{}"
 
