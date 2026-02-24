@@ -28,6 +28,7 @@ async def test_schedule_announcement_stores_event_title(scheduler):
         "Content",
         "msg_123",
         "111111111",
+        group_id="grp_test",
         event_start_timestamp=start_ts,
         event_end_timestamp=end_ts,
         event_title="Event Title"
@@ -52,7 +53,8 @@ async def test_schedule_announcement_default_event_title(scheduler):
         "Application Title",
         "Content",
         "msg_124",
-        "111111111"
+        "111111111",
+        group_id="grp_test",
     )
 
     job = scheduler.jobs[job_id]
@@ -69,6 +71,7 @@ async def test_scheduler_persistence_format(scheduler):
         "Content",
         "msg_123",
         "111111111",
+        group_id="grp_test",
         event_start_timestamp=timestamp+100,
         event_end_timestamp=timestamp+200,
         event_title="Event Title"
@@ -93,6 +96,7 @@ async def test_restore_jobs(scheduler):
         'title': 'Restored Job',
         'content': 'Content',
         'guild_id': '111111111',
+        'group_id': 'grp_test',
         'status': 'pending',
         'event_start_timestamp': future_time + 100,
         'event_end_timestamp': future_time + 200,
@@ -119,11 +123,14 @@ async def test_restore_legacy_jobs(scheduler):
         'content': 'Content',
         'guild_id': '111111111',
         'status': 'pending'
+        # No group_id — tests migration fallback
     }]
 
-    restored, skipped = scheduler.restore_jobs(jobs_data)
+    restored, skipped = scheduler.restore_jobs(jobs_data, group_id='grp_fallback')
 
     assert restored == 1
     assert 'job_legacy' in scheduler.jobs
     # Should default event_title to title
     assert scheduler.jobs['job_legacy'].event_title == 'Legacy Job'
+    # Should use fallback group_id
+    assert scheduler.jobs['job_legacy'].group_id == 'grp_fallback'

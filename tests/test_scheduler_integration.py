@@ -20,7 +20,7 @@ class TestSchedulerIntegration(unittest.TestCase):
             content = "Content"
             message_id = "123"
 
-            await scheduler.schedule_announcement(timestamp, title, content, message_id, "111111111")
+            await scheduler.schedule_announcement(timestamp, title, content, message_id, "111111111", group_id="grp_test")
 
             # Verify add_job call
             call_args = scheduler.scheduler.add_job.call_args

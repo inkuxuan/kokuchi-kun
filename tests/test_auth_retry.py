@@ -11,7 +11,6 @@ class TestVRChatAPIAuth(unittest.IsolatedAsyncioTestCase):
         self.config = {
             'username': 'user',
             'password': 'password',
-            'group_id': 'group_id',
         }
         self.mock_persistence = MagicMock()
         self.mock_persistence.load_shared = AsyncMock(return_value={})
@@ -93,7 +92,7 @@ class TestVRChatAPIAuth(unittest.IsolatedAsyncioTestCase):
         self.api._authenticate = AsyncMock(return_value=AuthResult(success=True))
 
         # Run
-        result = await self.api.post_announcement("Title", "Content")
+        result = await self.api.post_announcement("grp_test", "Title", "Content")
 
         # Verify
         self.assertTrue(result.success)

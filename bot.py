@@ -138,6 +138,9 @@ class VRChatAnnounceBot(commands.Bot):
             if guild_conf.get('guild_id') is None:
                 logger.error("Each guild in config.yaml must have a guild_id.")
                 sys.exit(1)
+            if guild_conf.get('group_id') is None:
+                logger.error("Each guild in config.yaml must have a group_id (VRChat group ID).")
+                sys.exit(1)
             guild_conf['guild_id'] = str(guild_conf['guild_id'])
             guild_conf['channel_ids'] = [str(c) for c in guild_conf.get('channel_ids', [])]
             if guild_conf.get('admin_role_id') is not None:
@@ -214,13 +217,24 @@ class VRChatAnnounceBot(commands.Bot):
 
             logger.info(Messages.Log.VRC_API_INIT_SUCCESS)
 
-            # Send login confirmation to first channel of each guild
+            # Send login confirmation to first channel of each guild, with group name
+            display_name = auth_result.display_name or 'Unknown'
             for guild_conf in self.config['discord']['guilds']:
                 channel_ids = guild_conf.get('channel_ids', [])
-                if channel_ids:
-                    channel = self.get_channel(int(channel_ids[0]))
-                    if channel:
-                        await channel.send(Messages.Discord.LOGGED_IN.format(auth_result.display_name or 'Unknown'))
+                if not channel_ids:
+                    continue
+                channel = self.get_channel(int(channel_ids[0]))
+                if not channel:
+                    continue
+
+                group_id = guild_conf.get('group_id')
+                group_name = group_id  # fallback to raw ID
+                if group_id:
+                    group_result = await self.vrchat_api.get_group(group_id)
+                    if group_result.success:
+                        group_name = group_result.data['name']
+
+                await channel.send(Messages.Discord.LOGGED_IN.format(display_name, group_name))
 
         except Exception as e:
             logger.error(Messages.Log.VRC_API_INIT_ERROR.format(e))

@@ -8,6 +8,7 @@ discord:
 
   guilds:  # List of Discord servers (guilds) the bot serves
     - guild_id: 000000000000000000      # Discord Server (Guild) ID
+      group_id: "grp_00000000-0000-0000-0000-000000000000"  # VRChat group ID for this guild
       enabled: true                      # Set to false to disable new announcement requests (booked ones still post)
       channel_ids:                       # Channels to monitor for announcement requests
         - 000000000000000000
@@ -62,7 +63,6 @@ openrouter:
 
 
 vrchat:
-  group_id: "grp_00000000-0000-0000-0000-000000000000"  # Replace with your VRChat group ID
   heartbeat_interval: 60 # minutes
 
 firestore:

@@ -84,6 +84,13 @@ class AnnouncementCog(commands.Cog):
             return None
         return guild_conf.get('admin_role_id')
 
+    def _get_group_id(self, guild_id):
+        """Return the VRChat group_id for a guild."""
+        guild_conf = self._get_guild_config(guild_id)
+        if guild_conf is None:
+            return None
+        return guild_conf.get('group_id')
+
     # --- State persistence ---
 
     async def save_state(self, guild_id=None):
@@ -111,7 +118,8 @@ class AnnouncementCog(commands.Cog):
         jobs_data = await persistence.load_data('jobs', [])
         restored_count, skipped_jobs = self.scheduler.restore_jobs(
             jobs_data,
-            guild_id=guild_id
+            guild_id=guild_id,
+            group_id=self._get_group_id(guild_id),
         )
 
         # Rebuild queued_announcements from restored jobs
@@ -415,7 +423,8 @@ class AnnouncementCog(commands.Cog):
                 return
 
             calendar_event_id = state.remove_calendar_event(request_msg_id)
-            result = await self.vrchat_api.delete_group_calendar_event(calendar_event_id)
+            group_id = self._get_group_id(guild_id)
+            result = await self.vrchat_api.delete_group_calendar_event(group_id, calendar_event_id)
             await self.save_state(guild_id)
             if result.success:
                 await channel.send(Messages.Discord.CALENDAR_DELETED)
@@ -456,7 +465,8 @@ class AnnouncementCog(commands.Cog):
         # Also delete calendar event if exists
         calendar_event_id = state.cancel(msg_id)
         if calendar_event_id:
-            await self.vrchat_api.delete_group_calendar_event(calendar_event_id)
+            group_id = self._get_group_id(guild_id)
+            await self.vrchat_api.delete_group_calendar_event(group_id, calendar_event_id)
             await channel.send(Messages.Discord.CALENDAR_DELETED_WITH_CANCEL)
 
         await self.save_state(guild_id)
@@ -498,11 +508,11 @@ class AnnouncementCog(commands.Cog):
                 return
 
             # Call VRChat API
-            result = await self.vrchat_api.create_group_calendar_event(title, content, start_at, end_at)
+            group_id = self._get_group_id(guild_id)
+            result = await self.vrchat_api.create_group_calendar_event(group_id, title, content, start_at, end_at)
 
             if result.success:
                 calendar_id = result.data['event_id']
-                group_id = self.vrchat_api.group_id
 
                 # Store event ID
                 state = self._get_state(guild_id)
@@ -539,7 +549,8 @@ class AnnouncementCog(commands.Cog):
 
         # Post immediately
         try:
-            result = await self.vrchat_api.post_announcement(job.title, job.content)
+            group_id = self._get_group_id(guild_id)
+            result = await self.vrchat_api.post_announcement(group_id, job.title, job.content)
 
             if result.success:
                 # Update embed to show success
@@ -619,12 +630,14 @@ class AnnouncementCog(commands.Cog):
                 return
 
             # Schedule the announcement
+            group_id = self._get_group_id(guild_id)
             job_id = await self.scheduler.schedule_announcement(
                 result.announcement_timestamp,
                 result.title,
                 result.content,
                 str(message.id),
                 guild_id=guild_id,
+                group_id=group_id,
                 event_start_timestamp=result.event_start_timestamp,
                 event_end_timestamp=result.event_end_timestamp,
                 event_title=result.event_title,

@@ -92,7 +92,7 @@ class Messages:
         OTP_TIMEOUT_DM = "OTPリクエストがタイムアウトしました。"
         GUILD_DISABLED = "このサーバーでは現在、新しい告知リクエストを受け付けていません。"
         BOT_ONLINE = "Bot is online! 🟢"
-        LOGGED_IN = "Logged into VRChat as {} ✅"
+        LOGGED_IN = "Logged into VRChat as {} ✅\nManaging group: {}"
 
         # Announcement Cog
         ALREADY_BOOKED = "この告知は既に予約されています。"

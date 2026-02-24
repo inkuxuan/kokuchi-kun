@@ -39,6 +39,7 @@ class TestCogs:
                 'fast_forward_emoji': "⏩",
                 'guilds': [{
                     'guild_id': str(TEST_GUILD_ID),
+                    'group_id': 'grp_test',
                     'enabled': True,
                     'channel_ids': [str(TEST_CHANNEL_ID)],
                     'admin_role_id': str(TEST_ADMIN_ROLE_ID),
@@ -111,7 +112,6 @@ class TestCogs:
         """Create a mock VRChat API."""
         api = MagicMock()
         api.set_otp_callback = MagicMock()
-        api.group_id = "test_group_id"
         return api
 
     @pytest.fixture
@@ -470,6 +470,7 @@ class TestCogs:
                 'fast_forward_emoji': "⏩",
                 'guilds': [{
                     'guild_id': str(TEST_GUILD_ID),
+                    'group_id': 'grp_test',
                     'enabled': False,  # Disabled
                     'channel_ids': [str(TEST_CHANNEL_ID)],
                     'admin_role_id': str(TEST_ADMIN_ROLE_ID),
