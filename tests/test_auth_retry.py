@@ -37,7 +37,7 @@ class TestVRChatAPIAuth(unittest.IsolatedAsyncioTestCase):
         # Side effect for get_current_user:
         # First call: Unauthorized (triggers 2FA flow)
         # Second call (after 2FA): Success
-        auth_api.get_current_user.side_effect = [unauth_exc, MagicMock(id='user_id', display_name='User')]
+        auth_api.get_current_user.side_effect = [unauth_exc, MagicMock(id='user_id', username='user', display_name='User')]
 
         # Side effect for verify2_fa:
         # First call: 400 Bad Request
@@ -99,6 +99,86 @@ class TestVRChatAPIAuth(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result.success)
         self.assertEqual(groups_api.add_group_post.call_count, 2)
         self.api._authenticate.assert_called_once()
+
+    @patch('utils.vrchat_api.AuthenticationApi')
+    async def test_initialize_cookie_username_mismatch(self, MockAuthApi):
+        """When cached cookie belongs to a different user, invalidate and re-auth with credentials"""
+        auth_api = MockAuthApi.return_value
+
+        # Cookie auth succeeds but returns a different username
+        wrong_user = MagicMock(id='wrong_id', username='wrong_user', display_name='Wrong')
+        correct_user = MagicMock(id='correct_id', username='user', display_name='User')
+
+        # First call (cookie auth) returns wrong user, second call (credential auth) returns correct
+        auth_api.get_current_user.side_effect = [wrong_user, correct_user]
+
+        # Simulate saved cookies exist
+        self.mock_persistence.load_shared = AsyncMock(return_value={
+            'authCookie': 'old_cookie',
+            'twoFactorAuthCookie': 'old_2fa',
+        })
+
+        # Need a fresh instance so api_client starts as None
+        api = VRChatAPI(self.config, self.mock_persistence)
+        api.otp_callback = AsyncMock()
+
+        result = await api.initialize()
+
+        self.assertTrue(result.success)
+        self.assertEqual(result.username, 'user')
+        # Cookies should have been invalidated (saved as empty dict)
+        self.mock_persistence.save_shared.assert_any_call('vrchat_session', {})
+
+    @patch('utils.vrchat_api.AuthenticationApi')
+    async def test_initialize_cookie_username_match(self, MockAuthApi):
+        """When cached cookie belongs to the configured user, use it directly"""
+        auth_api = MockAuthApi.return_value
+
+        correct_user = MagicMock(id='user_id', username='user', display_name='User')
+        auth_api.get_current_user.return_value = correct_user
+
+        self.mock_persistence.load_shared = AsyncMock(return_value={
+            'authCookie': 'valid_cookie',
+        })
+
+        api = VRChatAPI(self.config, self.mock_persistence)
+        result = await api.initialize()
+
+        self.assertTrue(result.success)
+        self.assertEqual(result.username, 'user')
+        self.assertEqual(result.method, 'cookie')
+
+    @patch('utils.vrchat_api.AuthenticationApi')
+    async def test_check_auth_status_username_mismatch(self, MockAuthApi):
+        """Heartbeat detects wrong user and triggers re-auth with credentials"""
+        auth_api = MockAuthApi.return_value
+
+        wrong_user = MagicMock(id='wrong_id', username='wrong_user', display_name='Wrong')
+        correct_user = MagicMock(id='correct_id', username='user', display_name='User')
+
+        # First call (heartbeat) returns wrong user, second call (credential re-auth) returns correct
+        auth_api.get_current_user.side_effect = [wrong_user, correct_user]
+
+        result = await self.api.check_auth_status()
+
+        self.assertTrue(result.success)
+        self.assertTrue(result.reauthenticated)
+        # Cookies should have been invalidated
+        self.mock_persistence.save_shared.assert_any_call('vrchat_session', {})
+
+    @patch('utils.vrchat_api.AuthenticationApi')
+    async def test_check_auth_status_username_match(self, MockAuthApi):
+        """Heartbeat with correct user returns success with username"""
+        auth_api = MockAuthApi.return_value
+
+        correct_user = MagicMock(id='user_id', username='user', display_name='User')
+        auth_api.get_current_user.return_value = correct_user
+
+        result = await self.api.check_auth_status()
+
+        self.assertTrue(result.success)
+        self.assertFalse(result.reauthenticated)
+        self.assertEqual(result.username, 'user')
 
 if __name__ == '__main__':
     unittest.main()

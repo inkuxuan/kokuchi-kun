@@ -7,6 +7,7 @@ class AuthResult:
     success: bool
     error: str | None = None
     user_id: str | None = None
+    username: str | None = None
     display_name: str | None = None
     method: str | None = None
     reauthenticated: bool = False

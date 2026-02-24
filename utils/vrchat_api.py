@@ -43,12 +43,19 @@ class VRChatAPI:
         """Initialize and authenticate with VRChat"""
         # Try to authenticate with saved cookies first
         if await self._try_cookie_auth():
-            return AuthResult(
-                success=True,
-                user_id=self.current_user.id,
-                display_name=self.current_user.display_name,
-                method="cookie",
-            )
+            # Verify the cached session belongs to the configured account
+            if self.current_user.username != self.username:
+                logger.warning(Messages.Log.USERNAME_MISMATCH.format(
+                    self.current_user.username, self.username))
+                await self._invalidate_cookies()
+            else:
+                return AuthResult(
+                    success=True,
+                    user_id=self.current_user.id,
+                    username=self.current_user.username,
+                    display_name=self.current_user.display_name,
+                    method="cookie",
+                )
 
         # Fall back to username/password auth with OTP
         return await self._authenticate_with_credentials()
@@ -176,6 +183,16 @@ class VRChatAPI:
             logger.error(Messages.Log.COOKIE_SAVE_FAIL.format(str(e)))
             return False
     
+    async def _invalidate_cookies(self):
+        """Invalidate cached session cookies in Firestore and reset auth state"""
+        await self.persistence.save_shared('vrchat_session', {})
+        if self.api_client:
+            self.api_client.close()
+            self.api_client = None
+        self.authenticated = False
+        self.current_user = None
+        logger.info(Messages.Log.COOKIES_INVALIDATED)
+
     async def _authenticate_with_credentials(self) -> AuthResult:
         """Authenticate with username and password"""
         # Create configuration with credentials
@@ -215,6 +232,7 @@ class VRChatAPI:
                 return AuthResult(
                     success=True,
                     user_id=self.current_user.id,
+                    username=self.current_user.username,
                     display_name=self.current_user.display_name,
                     method="password",
                 )
@@ -294,6 +312,7 @@ class VRChatAPI:
             return AuthResult(
                 success=True,
                 user_id=self.current_user.id,
+                username=self.current_user.username,
                 display_name=self.current_user.display_name,
             )
         except ApiException as e:
@@ -314,8 +333,24 @@ class VRChatAPI:
             auth_api = AuthenticationApi(self.api_client)
             self.current_user = auth_api.get_current_user()
             self.authenticated = True
+
+            # Verify the session belongs to the configured account
+            if self.current_user.username != self.username:
+                logger.warning(Messages.Log.USERNAME_MISMATCH.format(
+                    self.current_user.username, self.username))
+                await self._invalidate_cookies()
+                logger.info(Messages.Log.REAUTH_TRIGGERED.format("Username mismatch"))
+                result = await self._authenticate_with_credentials()
+                if result.success:
+                    return AuthResult(
+                        success=True,
+                        username=result.username,
+                        reauthenticated=True,
+                    )
+                return result
+
             logger.info(Messages.Log.HEARTBEAT_SUCCESS)
-            return AuthResult(success=True)
+            return AuthResult(success=True, username=self.current_user.username)
         except UnauthorizedException:
             logger.warning(Messages.Log.HEARTBEAT_FAIL.format("Unauthorized"))
             # Trigger re-auth
@@ -323,7 +358,7 @@ class VRChatAPI:
             result = await self._authenticate()
             if result.success:
                 logger.info(Messages.Log.HEARTBEAT_REAUTH_SUCCESS)
-                return AuthResult(success=True, reauthenticated=True)
+                return AuthResult(success=True, username=result.username, reauthenticated=True)
             else:
                 logger.error(Messages.Log.HEARTBEAT_REAUTH_FAIL.format(result.error))
                 return result

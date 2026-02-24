@@ -79,6 +79,8 @@ class Messages:
         HEARTBEAT_REAUTH_FAIL = "Re-authentication triggered by heartbeat failed: {}"
         REAUTH_TRIGGERED = "Re-authentication triggered by {}"
         TOTP_INVALID = "Invalid TOTP code provided, asking again..."
+        USERNAME_MISMATCH = "Cookie session belongs to '{}' but configured account is '{}', invalidating cached session"
+        COOKIES_INVALIDATED = "Cached session cookies invalidated"
 
     class Discord:
         # Shared
