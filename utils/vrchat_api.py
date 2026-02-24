@@ -1,6 +1,5 @@
 import logging
 import vrchatapi
-import sys
 from datetime import datetime
 import pytz
 from vrchatapi.api.authentication_api import AuthenticationApi
@@ -13,14 +12,6 @@ from utils.messages import Messages
 from utils.models import AuthResult, ApiResult
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
-
-# Add a console handler to ensure logs are output immediately
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
 
 class VRChatAPI:
     def __init__(self, config, persistence):
@@ -43,7 +34,7 @@ class VRChatAPI:
         # Try to authenticate with saved cookies first
         if await self._try_cookie_auth():
             # Verify the cached session belongs to the configured account
-            if self.current_user.username != self.username:
+            if self.current_user.username.lower() != self.username.lower():
                 logger.warning(Messages.Log.USERNAME_MISMATCH.format(
                     self.current_user.username, self.username))
                 await self._invalidate_cookies()
@@ -334,7 +325,7 @@ class VRChatAPI:
             self.authenticated = True
 
             # Verify the session belongs to the configured account
-            if self.current_user.username != self.username:
+            if self.current_user.username.lower() != self.username.lower():
                 logger.warning(Messages.Log.USERNAME_MISMATCH.format(
                     self.current_user.username, self.username))
                 await self._invalidate_cookies()
