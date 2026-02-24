@@ -119,32 +119,39 @@ class VRChatAnnounceBot(commands.Bot):
             self.heartbeat_check.start()
 
     def _normalize_config(self):
-        """Normalize old flat config format to new guilds format if needed, and validate."""
+        """Validate config and normalize all IDs to str."""
         discord_conf = self.config.get('discord', {})
 
         if 'guilds' not in discord_conf:
-            # Backward compatibility: convert old flat format to guilds list
-            firestore_config = self.config.get('firestore', {})
-            logger.warning(
+            logger.error(
                 "Config is using old format (no 'guilds' key). "
-                "Migrating to single-guild format. Please update config.yaml."
+                "Please update config.yaml to the new guilds format."
             )
-            discord_conf['guilds'] = [{
-                'guild_id': None,  # None means the bot responds to any guild (single-guild compat)
-                'enabled': True,
-                'channel_ids': discord_conf.get('channel_ids', []),
-                'admin_role_id': discord_conf.get('admin_role_id'),
-                'firestore_server_id': firestore_config.get('server_id', 'default'),
-            }]
-            self.config['discord'] = discord_conf
+            sys.exit(1)
+
+        # Normalize admin_id to str
+        if discord_conf.get('admin_id') is not None:
+            discord_conf['admin_id'] = str(discord_conf['admin_id'])
+
+        # Normalize per-guild IDs to str
+        for guild_conf in discord_conf['guilds']:
+            if guild_conf.get('guild_id') is None:
+                logger.error("Each guild in config.yaml must have a guild_id.")
+                sys.exit(1)
+            guild_conf['guild_id'] = str(guild_conf['guild_id'])
+            guild_conf['channel_ids'] = [str(c) for c in guild_conf.get('channel_ids', [])]
+            if guild_conf.get('admin_role_id') is not None:
+                guild_conf['admin_role_id'] = str(guild_conf['admin_role_id'])
+
+        self.config['discord'] = discord_conf
 
     def _build_guild_persistences(self):
-        """Build a mapping of guild_id -> Persistence for each configured guild."""
+        """Build a mapping of guild_id (str) -> Persistence for each configured guild."""
         firestore_config = self.config.get('firestore', {})
         persistences = {}
         for guild_conf in self.config['discord']['guilds']:
-            gid = guild_conf.get('guild_id')
-            server_id = guild_conf.get('firestore_server_id', str(gid) if gid else 'default')
+            gid = guild_conf['guild_id']  # already str after normalization
+            server_id = guild_conf.get('firestore_server_id', gid)
             persistences[gid] = Persistence(
                 server_id=server_id,
                 servers_collection=firestore_config.get('servers_collection', 'servers'),
@@ -195,7 +202,7 @@ class VRChatAnnounceBot(commands.Bot):
             for guild_conf in self.config['discord']['guilds']:
                 channel_ids = guild_conf.get('channel_ids', [])
                 if channel_ids:
-                    channel = self.get_channel(channel_ids[0])
+                    channel = self.get_channel(int(channel_ids[0]))
                     if channel:
                         await channel.send(Messages.Discord.BOT_ONLINE)
 
@@ -211,7 +218,7 @@ class VRChatAnnounceBot(commands.Bot):
             for guild_conf in self.config['discord']['guilds']:
                 channel_ids = guild_conf.get('channel_ids', [])
                 if channel_ids:
-                    channel = self.get_channel(channel_ids[0])
+                    channel = self.get_channel(int(channel_ids[0]))
                     if channel:
                         await channel.send(Messages.Discord.LOGGED_IN.format(auth_result.display_name or 'Unknown'))
 

@@ -4,7 +4,7 @@ discord:
   approval_reaction_emoji: "👍"
   fast_forward_emoji: "⏩"
   calendar_emoji: "📅"
-  otp_dm_user_id: 000000000000000000  # Discord User ID to receive VRChat OTP codes via DM
+  admin_id: 000000000000000000  # Discord User ID for the bot admin (receives OTP DMs and config warnings)
 
   guilds:  # List of Discord servers (guilds) the bot serves
     - guild_id: 000000000000000000      # Discord Server (Guild) ID

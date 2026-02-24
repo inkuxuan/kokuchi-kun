@@ -2,7 +2,6 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 import logging
-from typing import Optional
 from utils.messages import Messages
 from utils.version import get_version
 
@@ -14,13 +13,13 @@ class AdminCog(commands.Cog):
         self.config = config
         self.scheduler = scheduler
 
-        # Per-guild config lookup: guild_id (int or None) -> config dict
+        # Per-guild config lookup: guild_id (str) -> config dict
         self.guild_configs = {}
         for guild_conf in config['discord'].get('guilds', []):
-            gid = guild_conf.get('guild_id')
+            gid = guild_conf['guild_id']  # str after normalization
             self.guild_configs[gid] = guild_conf
 
-        # Flat set of all monitored channel IDs for quick permission checks
+        # Flat set of all monitored channel IDs (str) for quick permission checks
         self._all_channel_ids = set()
         for guild_conf in self.guild_configs.values():
             self._all_channel_ids.update(guild_conf.get('channel_ids', []))
@@ -30,21 +29,16 @@ class AdminCog(commands.Cog):
 
     def _get_guild_config(self, guild_id):
         """Return the config for a guild, or None if not configured."""
-        if guild_id in self.guild_configs:
-            return self.guild_configs[guild_id]
-        # Fallback: None-keyed entry (old single-guild compat)
-        if None in self.guild_configs:
-            return self.guild_configs[None]
-        return None
+        return self.guild_configs.get(guild_id)
 
     async def cog_check(self, ctx):
         """Permission check that applies to all commands in this cog"""
         # Check if in one of the monitored channels
-        if ctx.channel.id not in self._all_channel_ids:
+        if str(ctx.channel.id) not in self._all_channel_ids:
             return False
 
         # Get the guild-specific admin_role_id
-        guild_id = ctx.guild.id if ctx.guild else None
+        guild_id = str(ctx.guild.id)
         guild_conf = self._get_guild_config(guild_id)
         if not guild_conf:
             return False
@@ -53,7 +47,7 @@ class AdminCog(commands.Cog):
         if admin_role_id is None:
             return False
 
-        return discord.utils.get(ctx.author.roles, id=admin_role_id) is not None
+        return admin_role_id in [str(role.id) for role in ctx.author.roles]
 
     @commands.hybrid_command(
         name="list",
@@ -61,10 +55,8 @@ class AdminCog(commands.Cog):
     )
     async def list_jobs(self, ctx):
         """List all scheduled announcements for the current guild"""
-        guild_id = ctx.guild.id if ctx.guild else None
-        # Convert guild_id to str to match how jobs store it
-        str_guild_id = str(guild_id) if guild_id else None
-        jobs = self.scheduler.list_jobs(guild_id=str_guild_id)
+        guild_id = str(ctx.guild.id)
+        jobs = self.scheduler.list_jobs(guild_id=guild_id)
 
         if not jobs:
             await ctx.reply(Messages.Discord.NO_SCHEDULED_JOBS)
@@ -96,8 +88,9 @@ class AdminCog(commands.Cog):
     async def cancel_job(self, ctx, job_id: str):
         """Cancel a scheduled announcement"""
         # Verify the job belongs to this guild before cancelling
+        guild_id = str(ctx.guild.id)
         job = self.scheduler.get_job(job_id)
-        if job is None or job.guild_id != str(ctx.guild.id):
+        if job is None or job.guild_id != guild_id:
             await ctx.reply(Messages.Discord.JOB_NOT_FOUND.format(job_id))
             return
 
@@ -107,7 +100,6 @@ class AdminCog(commands.Cog):
             # Persist the cancellation to Firestore
             announcement_cog = self.bot.get_cog('AnnouncementCog')
             if announcement_cog:
-                guild_id = ctx.guild.id if ctx.guild else None
                 await announcement_cog.save_state(guild_id)
             await ctx.reply(Messages.Discord.JOB_CANCELLED.format(job_id))
         else:

@@ -24,7 +24,7 @@ class Scheduler:
         """Set callback for job completion (success or failure)"""
         self.on_job_completion = callback
         
-    async def schedule_announcement(self, timestamp, title, content, message_id, guild_id=None,
+    async def schedule_announcement(self, timestamp, title, content, message_id, guild_id,
                                     event_start_timestamp=None, event_end_timestamp=None, event_title=None):
         """Schedule an announcement for the given timestamp"""
         job_id = str(uuid.uuid4())

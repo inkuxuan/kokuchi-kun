@@ -40,7 +40,7 @@ class JobData:
     timestamp: float
     title: str
     content: str
-    guild_id: str | None = None
+    guild_id: str
     status: str = "pending"
     event_start_timestamp: float | None = None
     event_end_timestamp: float | None = None
@@ -58,7 +58,7 @@ class JobData:
             timestamp=d["timestamp"],
             title=d["title"],
             content=d["content"],
-            guild_id=d.get("guild_id"),
+            guild_id=d["guild_id"],
             status=d.get("status", "pending"),
             event_start_timestamp=d.get("event_start_timestamp"),
             event_end_timestamp=d.get("event_end_timestamp"),
