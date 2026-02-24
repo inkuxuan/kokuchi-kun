@@ -24,7 +24,8 @@ class Scheduler:
         """Set callback for job completion (success or failure)"""
         self.on_job_completion = callback
         
-    async def schedule_announcement(self, timestamp, title, content, message_id, event_start_timestamp=None, event_end_timestamp=None, event_title=None):
+    async def schedule_announcement(self, timestamp, title, content, message_id, guild_id=None,
+                                    event_start_timestamp=None, event_end_timestamp=None, event_title=None):
         """Schedule an announcement for the given timestamp"""
         job_id = str(uuid.uuid4())
         run_date = datetime.fromtimestamp(timestamp, tz=pytz.utc)
@@ -48,6 +49,7 @@ class Scheduler:
         self.jobs[job_id] = JobData(
             id=job_id,
             message_id=message_id,
+            guild_id=guild_id,
             timestamp=timestamp,
             event_start_timestamp=event_start_timestamp,
             event_end_timestamp=event_end_timestamp,
@@ -106,7 +108,7 @@ class Scheduler:
                 if self.on_job_completion:
                     await self.on_job_completion(self.jobs[job_id].to_dict())
     
-    def restore_jobs(self, jobs_list):
+    def restore_jobs(self, jobs_list, guild_id=None):
         """Restore jobs from storage. Returns (restored_count, skipped_jobs_list)"""
         restored_count = 0
         skipped_jobs = []
@@ -135,6 +137,10 @@ class Scheduler:
                 if 'event_title' not in job_data:
                     job_data['event_title'] = job_data['title']
 
+                # Set guild_id if not in stored data (migration from pre-multi-guild)
+                if 'guild_id' not in job_data:
+                    job_data['guild_id'] = guild_id
+
                 self.jobs[job_id] = JobData.from_dict(job_data)
                 restored_count += 1
                 logger.info(f"Restored job {job_id} scheduled for {run_date}")
@@ -144,16 +150,20 @@ class Scheduler:
 
         return restored_count, skipped_jobs
 
-    def get_jobs_data(self):
-        """Get list of current jobs for persistence"""
-        return [job.to_dict() for job in self.jobs.values()]
+    def get_jobs_data(self, guild_id=None):
+        """Get list of current jobs for persistence, optionally filtered by guild_id"""
+        jobs = self.jobs.values()
+        if guild_id is not None:
+            jobs = [j for j in jobs if j.guild_id == guild_id]
+        return [job.to_dict() for job in jobs]
 
-    def list_jobs(self):
-        """List all active scheduled jobs"""
+    def list_jobs(self, guild_id=None):
+        """List all active scheduled jobs, optionally filtered by guild_id"""
         active_jobs = []
         for job in self.jobs.values():
             if self.scheduler.get_job(job.id) is not None:
-                active_jobs.append(job)
+                if guild_id is None or job.guild_id == guild_id:
+                    active_jobs.append(job)
         return active_jobs
 
     def cancel_job(self, job_id):

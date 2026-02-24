@@ -11,6 +11,11 @@ from cogs.announcement import AnnouncementCog
 from utils.messages import Messages
 from utils.models import AIProcessingResult, JobData
 
+# Guild ID used consistently across all tests
+TEST_GUILD_ID = 111111111
+TEST_CHANNEL_ID = 987654321
+TEST_ADMIN_ROLE_ID = 111222333
+
 class TestCogs:
     @pytest.fixture
     def mock_bot(self):
@@ -25,15 +30,20 @@ class TestCogs:
 
     @pytest.fixture
     def mock_config(self):
-        """Create a mock configuration."""
+        """Create a mock configuration using the new guilds format."""
         return {
             'discord': {
-                'channel_ids': [987654321],
-                'admin_role_id': 111222333,
                 'prefix': '!',
                 'seen_reaction_emoji': "👀",
                 'approval_reaction_emoji': "👍",
-                'fast_forward_emoji': "⏩"
+                'fast_forward_emoji': "⏩",
+                'guilds': [{
+                    'guild_id': None,  # None-keyed entry matches any guild (backward compat)
+                    'enabled': True,
+                    'channel_ids': [TEST_CHANNEL_ID],
+                    'admin_role_id': TEST_ADMIN_ROLE_ID,
+                    'firestore_server_id': 'test',
+                }]
             }
         }
 
@@ -50,6 +60,7 @@ class TestCogs:
                 formatted_date_time='2023-03-27 12:00:00',
                 timestamp=1679918400,
                 message_id='123456789',
+                guild_id=str(TEST_GUILD_ID),
             )
         ]
         scheduler.cancel_job = MagicMock(return_value=True)
@@ -102,7 +113,9 @@ class TestCogs:
     @pytest.fixture
     def announcement_cog(self, mock_bot, mock_config, mock_ai_processor, mock_scheduler, mock_persistence, mock_vrchat_api):
         """Create an AnnouncementCog instance with mocks."""
-        cog = AnnouncementCog(mock_bot, mock_config, mock_ai_processor, mock_scheduler, mock_persistence, mock_vrchat_api)
+        # None-keyed persistence acts as fallback for any guild_id
+        guild_persistences = {None: mock_persistence}
+        cog = AnnouncementCog(mock_bot, mock_config, mock_ai_processor, mock_scheduler, guild_persistences, mock_vrchat_api)
         return cog
 
     @pytest.fixture
@@ -116,9 +129,10 @@ class TestCogs:
         message.author.mention = "<@987123456>"
 
         message.channel = MagicMock()
-        message.channel.id = 987654321
+        message.channel.id = TEST_CHANNEL_ID
 
         message.guild = MagicMock()
+        message.guild.id = TEST_GUILD_ID
         message.guild.fetch_member = AsyncMock()
 
         message.add_reaction = AsyncMock()
@@ -146,7 +160,7 @@ class TestCogs:
         """Create a mock member with admin role."""
         member = MagicMock()
         admin_role = MagicMock()
-        admin_role.id = 111222333
+        admin_role.id = TEST_ADMIN_ROLE_ID
         member.roles = [admin_role]
         return member
 
@@ -178,7 +192,7 @@ class TestCogs:
         assert mock_context.send.called or mock_context.reply.called
 
     @pytest.mark.asyncio
-    async def test_admin_cancel_command(self, admin_cog, mock_context, mock_admin_member, announcement_cog):
+    async def test_admin_cancel_command(self, admin_cog, mock_context, mock_admin_member, announcement_cog, mock_persistence):
         """Test the cancel command in AdminCog."""
         # Setup context
         mock_context.author = mock_admin_member
@@ -192,8 +206,8 @@ class TestCogs:
         # Verify cancel_job was called
         admin_cog.scheduler.cancel_job.assert_called_once_with("job1")
 
-        # Verify save_state was called on announcement cog
-        announcement_cog.persistence.save_data.assert_called()
+        # Verify save_state was called on announcement cog (which calls persistence.save_data)
+        mock_persistence.save_data.assert_called()
 
         # Verify success message
         mock_context.reply.assert_called_once()
@@ -203,7 +217,7 @@ class TestCogs:
     # AnnouncementCog Tests
 
     @pytest.mark.asyncio
-    async def test_announcement_request_handling(self, announcement_cog, mock_message):
+    async def test_announcement_request_handling(self, announcement_cog, mock_message, mock_persistence):
         """Test handling of announcement requests."""
         # Set up message
         mock_message.content = "Test content"
@@ -214,23 +228,27 @@ class TestCogs:
         # Verify reaction was added
         mock_message.add_reaction.assert_called_once_with(announcement_cog.seen_emoji)
 
-        # Verify message was stored in pending_requests (via state manager)
-        assert announcement_cog.state.is_pending(str(mock_message.id))
+        # Verify message was stored in pending_requests via state manager
+        guild_id = mock_message.guild.id
+        assert announcement_cog._get_state(guild_id).is_pending(str(mock_message.id))
 
         # Verify persistence save was called
-        announcement_cog.persistence.save_data.assert_called()
+        mock_persistence.save_data.assert_called()
 
     @pytest.mark.asyncio
     async def test_announcement_approval(self, announcement_cog, mock_message, mock_admin_member):
         """Test approval of announcements via reactions."""
+        guild_id = mock_message.guild.id
+
         # Store a pending request (via state manager)
-        announcement_cog.state.add_pending(str(mock_message.id))
+        announcement_cog._get_state(guild_id).add_pending(str(mock_message.id))
 
         # Create a payload for the reaction
         payload = MagicMock()
         payload.user_id = 987123456  # Not the bot
         payload.message_id = mock_message.id
         payload.channel_id = mock_message.channel.id
+        payload.guild_id = guild_id
         payload.emoji = MagicMock()
         payload.emoji.__str__ = MagicMock(return_value=announcement_cog.approval_emoji)
 
@@ -249,17 +267,16 @@ class TestCogs:
         # Verify scheduler was called
         announcement_cog.scheduler.schedule_announcement.assert_called_once()
 
-        # Verify persistence save was called
-        announcement_cog.persistence.save_data.assert_called()
-
         # Verify queued_announcements updated (via state manager)
-        assert announcement_cog.state.is_queued(str(mock_message.id))
+        assert announcement_cog._get_state(guild_id).is_queued(str(mock_message.id))
 
     @pytest.mark.asyncio
     async def test_duplicate_prevention_history(self, announcement_cog, mock_message):
         """Test that history prevents duplicate bookings."""
+        guild_id = mock_message.guild.id
+
         # Add message ID to history (via state manager)
-        announcement_cog.state.history.append(str(mock_message.id))
+        announcement_cog._get_state(guild_id).history.append(str(mock_message.id))
 
         # Call handler
         await announcement_cog._handle_announcement_request(mock_message)
@@ -268,13 +285,13 @@ class TestCogs:
         mock_message.reply.assert_called_with(Messages.Discord.ALREADY_BOOKED)
 
         # Verify NOT added to pending
-        assert not announcement_cog.state.is_pending(str(mock_message.id))
+        assert not announcement_cog._get_state(guild_id).is_pending(str(mock_message.id))
 
     @pytest.mark.asyncio
-    async def test_restoration_on_ready(self, announcement_cog):
+    async def test_restoration_on_ready(self, announcement_cog, mock_persistence):
         """Test restoration logic on bot ready."""
-        # Setup mocks
-        announcement_cog.persistence.load_data.side_effect = [
+        # Setup mocks - load_data is called 4 times per guild: pending, history, calendar, jobs
+        mock_persistence.load_data.side_effect = [
             {'123': None}, # pending
             ['456'],       # history
             {},            # calendar
@@ -284,6 +301,7 @@ class TestCogs:
         # Mock scheduler restoration result
         skipped_job = {'id': 'job2', 'title': 'Skipped Job', 'timestamp': 900}
         announcement_cog.scheduler.restore_jobs.return_value = (1, [skipped_job])
+        announcement_cog.scheduler.list_jobs.return_value = []
 
         # Mock channel for notification
         channel = AsyncMock()
@@ -292,11 +310,11 @@ class TestCogs:
         # Call on_ready
         await announcement_cog.on_ready()
 
-        # Verify load_data calls
-        assert announcement_cog.persistence.load_data.call_count == 4
+        # Verify load_data calls (4 per guild: pending, history, calendar, jobs)
+        assert mock_persistence.load_data.call_count == 4
 
         # Verify save_state was called (to clean up skipped jobs)
-        announcement_cog.persistence.save_data.assert_called()
+        mock_persistence.save_data.assert_called()
 
         # Verify scheduler restoration call
         announcement_cog.scheduler.restore_jobs.assert_called_once()
@@ -312,23 +330,23 @@ class TestCogs:
         assert "Skipped Job" in args_skipped[0]
 
     @pytest.mark.asyncio
-    async def test_job_completion_callback(self, announcement_cog):
+    async def test_job_completion_callback(self, announcement_cog, mock_persistence):
         """Test job completion callback logic."""
-        # Setup (via state manager)
-        announcement_cog.state.queued_announcements.add('msg123')
+        # Setup state under None key (matching job_data with no guild_id)
+        announcement_cog._get_state(None).queued_announcements.add('msg123')
 
-        # Call callback
+        # Call callback (no guild_id → guild_id=None)
         job_data = {'message_id': 'msg123', 'status': 'success'}
         await announcement_cog._on_job_complete(job_data)
 
         # Verify history update
-        assert announcement_cog.state.is_in_history('msg123')
+        assert announcement_cog._get_state(None).is_in_history('msg123')
 
         # Verify removal from queue
-        assert not announcement_cog.state.is_queued('msg123')
+        assert not announcement_cog._get_state(None).is_queued('msg123')
 
         # Verify persistence save
-        announcement_cog.persistence.save_data.assert_called()
+        mock_persistence.save_data.assert_called()
 
     @pytest.mark.asyncio
     async def test_process_approved_announcement_past_time_warning(self, announcement_cog, mock_message):
@@ -354,8 +372,8 @@ class TestCogs:
         # Verify AI called
         announcement_cog.ai_processor.process_announcement.assert_called_with(mock_message.content)
 
-        # Verify Warning was sent via edit
-        expected_mentions = f"<@&111222333> {mock_message.author.mention}"
+        # Verify Warning was sent via edit (admin_role_id from None-keyed guild config)
+        expected_mentions = f"<@&{TEST_ADMIN_ROLE_ID}> {mock_message.author.mention}"
         expected_content = Messages.Discord.PAST_TIME_WARNING.format(mentions=expected_mentions)
         processing_msg.edit.assert_called_with(content=expected_content)
 
@@ -393,3 +411,36 @@ class TestCogs:
         call_kwargs = processing_msg.edit.call_args[1]
         assert 'embed' in call_kwargs
         assert call_kwargs.get('content') is None
+
+    @pytest.mark.asyncio
+    async def test_guild_disabled_rejects_new_requests(self, mock_bot, mock_ai_processor, mock_scheduler, mock_persistence, mock_vrchat_api, mock_message):
+        """Test that a disabled guild rejects new announcement requests."""
+        config = {
+            'discord': {
+                'prefix': '!',
+                'seen_reaction_emoji': "👀",
+                'approval_reaction_emoji': "👍",
+                'fast_forward_emoji': "⏩",
+                'guilds': [{
+                    'guild_id': None,
+                    'enabled': False,  # Disabled
+                    'channel_ids': [TEST_CHANNEL_ID],
+                    'admin_role_id': TEST_ADMIN_ROLE_ID,
+                    'firestore_server_id': 'test',
+                }]
+            }
+        }
+        guild_persistences = {None: mock_persistence}
+        cog = AnnouncementCog(mock_bot, config, mock_ai_processor, mock_scheduler, guild_persistences, mock_vrchat_api)
+
+        # Simulate on_message with bot mention on monitored channel
+        mock_message.channel.id = TEST_CHANNEL_ID
+        mock_bot.user.mentioned_in.return_value = True
+
+        await cog.on_message(mock_message)
+
+        # Should reply with disabled message
+        mock_message.reply.assert_called_once_with(Messages.Discord.GUILD_DISABLED)
+
+        # Should NOT have added to pending state
+        assert not cog._get_state(TEST_GUILD_ID).is_pending(str(mock_message.id))
