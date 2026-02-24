@@ -288,6 +288,10 @@ class AnnouncementCog(commands.Cog):
         if payload.user_id == self.bot.user.id:
             return
 
+        # Ignore DM reactions (guild_id is None for DMs)
+        if payload.guild_id is None:
+            return
+
         # Check if the channel is a monitored channel
         if str(payload.channel_id) not in self._all_channel_ids:
             return
@@ -370,6 +374,10 @@ class AnnouncementCog(commands.Cog):
         """Handle reaction removals"""
         # Ignore own reactions
         if payload.user_id == self.bot.user.id:
+            return
+
+        # Ignore DM reactions (guild_id is None for DMs)
+        if payload.guild_id is None:
             return
 
         # Check if the channel is a monitored channel

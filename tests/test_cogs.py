@@ -222,6 +222,44 @@ class TestCogs:
         args, _ = mock_context.reply.call_args
         assert Messages.Discord.JOB_CANCELLED.format("job1") in args[0]
 
+    @pytest.mark.asyncio
+    async def test_admin_cancel_cross_guild_rejected(self, admin_cog, mock_context, mock_admin_member):
+        """Test that cancelling a job belonging to a different guild is rejected."""
+        mock_context.author = mock_admin_member
+
+        # The mock scheduler returns a job with guild_id = str(TEST_GUILD_ID),
+        # but the context guild is different.
+        other_guild_id = 999999999
+        mock_context.guild.id = other_guild_id
+
+        await admin_cog.cancel_job(admin_cog, mock_context, "job1")
+
+        # Verify cancel_job was NOT called on the scheduler
+        admin_cog.scheduler.cancel_job.assert_not_called()
+
+        # Verify the "not found" message was sent
+        mock_context.reply.assert_called_once()
+        args, _ = mock_context.reply.call_args
+        assert Messages.Discord.JOB_NOT_FOUND.format("job1") in args[0]
+
+    @pytest.mark.asyncio
+    async def test_admin_cancel_nonexistent_job_rejected(self, admin_cog, mock_context, mock_admin_member):
+        """Test that cancelling a nonexistent job is rejected."""
+        mock_context.author = mock_admin_member
+
+        # Make get_job return None for the requested job
+        admin_cog.scheduler.get_job = MagicMock(return_value=None)
+
+        await admin_cog.cancel_job(admin_cog, mock_context, "nonexistent_job")
+
+        # Verify cancel_job was NOT called on the scheduler
+        admin_cog.scheduler.cancel_job.assert_not_called()
+
+        # Verify the "not found" message was sent
+        mock_context.reply.assert_called_once()
+        args, _ = mock_context.reply.call_args
+        assert Messages.Discord.JOB_NOT_FOUND.format("nonexistent_job") in args[0]
+
     # AnnouncementCog Tests
 
     @pytest.mark.asyncio
