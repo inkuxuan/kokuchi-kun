@@ -94,12 +94,32 @@ class AdminCog(commands.Cog):
             await ctx.reply(Messages.Discord.JOB_NOT_FOUND.format(job_id))
             return
 
+        # Only allow cancelling active, missed, or failed jobs
+        if job.status not in ('pending', 'missed', 'failed'):
+            await ctx.reply(Messages.Discord.JOB_NOT_FOUND.format(job_id))
+            return
+
         result = self.scheduler.cancel_job(job_id)
 
         if result:
-            # Persist the cancellation to Firestore
+            # Also update AnnouncementState
             announcement_cog = self.bot.get_cog('AnnouncementCog')
             if announcement_cog:
+                state = announcement_cog._get_state(guild_id)
+                calendar_event_id = state.cancel(job.message_id)
+
+                # Delete calendar event if one was associated
+                if calendar_event_id:
+                    group_id = None
+                    guild_conf = self._get_guild_config(guild_id)
+                    if guild_conf:
+                        group_id = guild_conf.get('group_id')
+                    if group_id:
+                        vrchat_api = announcement_cog.vrchat_api
+                        await vrchat_api.delete_group_calendar_event(group_id, calendar_event_id)
+                        await ctx.send(Messages.Discord.CALENDAR_DELETED_WITH_CANCEL)
+
+                # Persist the cancellation to Firestore
                 await announcement_cog.save_state(guild_id)
             await ctx.reply(Messages.Discord.JOB_CANCELLED.format(job_id))
         else:

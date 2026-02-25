@@ -115,7 +115,7 @@ class VRChatAnnounceBot(commands.Bot):
         self.guild_persistences = self._build_guild_persistences()
 
         self.vrchat_api = VRChatAPI(self.config['vrchat'], self.shared_persistence)
-        self.scheduler = Scheduler(self.vrchat_api)
+        self.scheduler = Scheduler(self.vrchat_api, self.config.get('scheduler', {}))
         self.ai_processor = AIProcessor(self.config['openrouter'])
 
         # Start heartbeat loop

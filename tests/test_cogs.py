@@ -52,6 +52,7 @@ class TestCogs:
     def mock_scheduler(self):
         """Create a mock scheduler."""
         scheduler = MagicMock()
+        scheduler.misfire_grace_time = 3600
         # Set up mock job list
         scheduler.list_jobs.return_value = [
             JobData(
@@ -77,6 +78,8 @@ class TestCogs:
         scheduler.schedule_announcement = AsyncMock(return_value='new_job_id')
         scheduler.restore_jobs = MagicMock(return_value=(0, []))
         scheduler.get_jobs_data = MagicMock(return_value=[])
+        scheduler.jobs = MagicMock()
+        scheduler.jobs.values = MagicMock(return_value=[])
         return scheduler
 
     @pytest.fixture
@@ -260,6 +263,52 @@ class TestCogs:
         args, _ = mock_context.reply.call_args
         assert Messages.Discord.JOB_NOT_FOUND.format("nonexistent_job") in args[0]
 
+    @pytest.mark.asyncio
+    async def test_admin_cancel_success_job_rejected(self, admin_cog, mock_context, mock_admin_member):
+        """Test that cancelling a successfully completed job is rejected."""
+        mock_context.author = mock_admin_member
+
+        # Make get_job return a completed job
+        admin_cog.scheduler.get_job = MagicMock(return_value=JobData(
+            id='job_done',
+            title='Done Job',
+            content='Content',
+            formatted_date_time='2023-03-27 12:00:00',
+            timestamp=1679918400,
+            message_id='123456789',
+            guild_id=str(TEST_GUILD_ID),
+            status='success',
+        ))
+
+        await admin_cog.cancel_job(admin_cog, mock_context, "job_done")
+
+        # Verify cancel_job was NOT called on the scheduler
+        admin_cog.scheduler.cancel_job.assert_not_called()
+
+        # Verify the "not found" message was sent
+        mock_context.reply.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_admin_cancel_cancelled_job_rejected(self, admin_cog, mock_context, mock_admin_member):
+        """Test that cancelling an already-cancelled job is rejected."""
+        mock_context.author = mock_admin_member
+
+        admin_cog.scheduler.get_job = MagicMock(return_value=JobData(
+            id='job_cancelled',
+            title='Cancelled Job',
+            content='Content',
+            formatted_date_time='2023-03-27 12:00:00',
+            timestamp=1679918400,
+            message_id='123456789',
+            guild_id=str(TEST_GUILD_ID),
+            status='cancelled',
+        ))
+
+        await admin_cog.cancel_job(admin_cog, mock_context, "job_cancelled")
+
+        admin_cog.scheduler.cancel_job.assert_not_called()
+        mock_context.reply.assert_called_once()
+
     # AnnouncementCog Tests
 
     @pytest.mark.asyncio
@@ -359,7 +408,7 @@ class TestCogs:
         # Verify load_data calls (4 per guild: pending, history, calendar, jobs)
         assert mock_persistence.load_data.call_count == 4
 
-        # Verify save_state was called (to clean up skipped jobs)
+        # Verify save_state was called (to persist missed-job status updates)
         mock_persistence.save_data.assert_called()
 
         # Verify scheduler restoration call
@@ -397,12 +446,12 @@ class TestCogs:
 
     @pytest.mark.asyncio
     async def test_process_approved_announcement_past_time_warning(self, announcement_cog, mock_message):
-        """Test that scheduling is blocked and warning sent for times > 1h in past."""
+        """Test that scheduling is blocked and warning sent for times > misfire_grace_time in past."""
         # Mock processing message
         processing_msg = AsyncMock()
         mock_message.reply.return_value = processing_msg
 
-        # Mock AI result - timestamp 2 hours ago
+        # Mock AI result - timestamp 2 hours ago (beyond default 3600s grace)
         current_time = time.time()
         past_time = current_time - 7200 # 2 hours ago
 
@@ -429,12 +478,12 @@ class TestCogs:
 
     @pytest.mark.asyncio
     async def test_process_approved_announcement_recent_past_time_success(self, announcement_cog, mock_message):
-        """Test that scheduling proceeds for times < 1h in past."""
+        """Test that scheduling proceeds for times < misfire_grace_time in past."""
         # Mock processing message
         processing_msg = AsyncMock()
         mock_message.reply.return_value = processing_msg
 
-        # Mock AI result - timestamp 30 minutes ago
+        # Mock AI result - timestamp 30 minutes ago (within default 3600s grace)
         current_time = time.time()
         recent_past_time = current_time - 1800 # 30 mins ago
 
