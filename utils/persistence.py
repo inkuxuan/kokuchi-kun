@@ -6,12 +6,13 @@ logger = logging.getLogger(__name__)
 
 class Persistence:
     def __init__(self, server_id='default', servers_collection='servers',
-                 shared_collection='shared', state_subcollection='state'):
+                 shared_collection='shared', state_subcollection='state',
+                 database=None):
         self.server_id = server_id
         self.servers_collection = servers_collection
         self.shared_collection = shared_collection
         self.state_subcollection = state_subcollection
-        self.db = AsyncClient()
+        self.db = AsyncClient(database=database) if database else AsyncClient()
 
     async def save_data(self, key, data):
         """Save per-server state to Firestore.
