@@ -60,6 +60,7 @@ Once approved, the bot uses AI to parse the date, time, title, and content, then
 
 The embed includes:
 - **Post time** — when the announcement will be posted to VRChat
+- **Event start and end times in JST** — used if a calendar creation is requested
 - **Title** — extracted by AI
 - **Content** — the announcement text
 - **Job ID** — used for cancellation
