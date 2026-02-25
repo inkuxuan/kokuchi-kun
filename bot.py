@@ -108,6 +108,7 @@ class VRChatAnnounceBot(commands.Bot):
             servers_collection=firestore_config.get('servers_collection', 'servers'),
             shared_collection=firestore_config.get('shared_collection', 'shared'),
             state_subcollection=firestore_config.get('state_subcollection', 'state'),
+            database=firestore_config.get('database'),
         )
 
         # Per-guild persistences for announcement state
@@ -165,6 +166,7 @@ class VRChatAnnounceBot(commands.Bot):
                 servers_collection=firestore_config.get('servers_collection', 'servers'),
                 shared_collection=firestore_config.get('shared_collection', 'shared'),
                 state_subcollection=firestore_config.get('state_subcollection', 'state'),
+                database=firestore_config.get('database'),
             )
         return persistences
 

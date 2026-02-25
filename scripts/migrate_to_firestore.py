@@ -47,8 +47,8 @@ def load_json(filepath):
         return json.load(f)
 
 
-async def migrate(server_id: str):
-    db = AsyncClient()
+async def migrate(server_id: str, database: str | None = None):
+    db = AsyncClient(database=database) if database else AsyncClient()
 
     # Migrate per-server state files
     for key, filename in STATE_FILES.items():
@@ -85,10 +85,15 @@ def main():
         default="default",
         help='Server ID in Firestore (default: "default")',
     )
+    parser.add_argument(
+        "--database",
+        default=None,
+        help='Firestore database ID (default: "(default)")',
+    )
     args = parser.parse_args()
 
-    logger.info(f"Starting migration with server_id={args.server_id}")
-    asyncio.run(migrate(args.server_id))
+    logger.info(f"Starting migration with server_id={args.server_id}, database={args.database or '(default)'}")
+    asyncio.run(migrate(args.server_id, database=args.database))
 
 
 if __name__ == "__main__":
