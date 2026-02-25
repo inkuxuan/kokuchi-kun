@@ -1,0 +1,1 @@
+uv run --frozen bot.py
