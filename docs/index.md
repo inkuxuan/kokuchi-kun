@@ -10,8 +10,8 @@ hero:
       text: はじめに
       link: /ja/getting-started
     - theme: alt
-      text: コマンド一覧
-      link: /ja/commands
+      text: できること
+      link: /ja/features
 
 features:
   - title: 簡単な申請

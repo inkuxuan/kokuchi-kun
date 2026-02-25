@@ -10,8 +10,8 @@ hero:
       text: Getting Started
       link: /en/getting-started
     - theme: alt
-      text: Commands Reference
-      link: /en/commands
+      text: Features
+      link: /en/features
 
 features:
   - title: Simple Submission

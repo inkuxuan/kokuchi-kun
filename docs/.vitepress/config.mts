@@ -13,6 +13,7 @@ export default defineConfig({
         nav: [
           { text: 'ホーム', link: '/' },
           { text: 'はじめに', link: '/ja/getting-started' },
+          { text: 'できること', link: '/ja/features' },
           { text: 'コマンド', link: '/ja/commands' },
         ],
         sidebar: [
@@ -20,7 +21,7 @@ export default defineConfig({
             text: 'ガイド',
             items: [
               { text: 'はじめに', link: '/ja/getting-started' },
-              { text: '告知ワークフロー', link: '/ja/workflow' },
+              { text: 'できること', link: '/ja/features' },
               { text: 'リアクション一覧', link: '/ja/reactions' },
             ],
           },
@@ -43,6 +44,7 @@ export default defineConfig({
         nav: [
           { text: 'Home', link: '/en/' },
           { text: 'Getting Started', link: '/en/getting-started' },
+          { text: 'Features', link: '/en/features' },
           { text: 'Commands', link: '/en/commands' },
         ],
         sidebar: [
@@ -50,7 +52,7 @@ export default defineConfig({
             text: 'Guide',
             items: [
               { text: 'Getting Started', link: '/en/getting-started' },
-              { text: 'Announcement Workflow', link: '/en/workflow' },
+              { text: 'Features', link: '/en/features' },
               { text: 'Reactions Reference', link: '/en/reactions' },
             ],
           },
