@@ -8,10 +8,10 @@ from utils.version import get_version
 logger = logging.getLogger(__name__)
 
 class AdminCog(commands.Cog):
-    def __init__(self, bot, config, scheduler):
+    def __init__(self, bot, config, state_manager):
         self.bot = bot
         self.config = config
-        self.scheduler = scheduler
+        self.state_manager = state_manager
 
         # Per-guild config lookup: guild_id (str) -> config dict
         self.guild_configs = {}
@@ -56,7 +56,7 @@ class AdminCog(commands.Cog):
     async def list_jobs(self, ctx):
         """List all scheduled announcements for the current guild"""
         guild_id = str(ctx.guild.id)
-        jobs = self.scheduler.list_jobs(guild_id=guild_id)
+        jobs = self.state_manager.scheduler.list_jobs(guild_id=guild_id)
 
         if not jobs:
             await ctx.reply(Messages.Discord.NO_SCHEDULED_JOBS)
@@ -89,7 +89,7 @@ class AdminCog(commands.Cog):
         """Cancel a scheduled announcement"""
         # Verify the job belongs to this guild before cancelling
         guild_id = str(ctx.guild.id)
-        job = self.scheduler.get_job(job_id)
+        job = self.state_manager.scheduler.get_job(job_id)
         if job is None or job.guild_id != guild_id:
             await ctx.reply(Messages.Discord.JOB_NOT_FOUND.format(job_id))
             return
@@ -99,28 +99,14 @@ class AdminCog(commands.Cog):
             await ctx.reply(Messages.Discord.JOB_NOT_FOUND.format(job_id))
             return
 
-        result = self.scheduler.cancel_job(job_id)
+        # Cancel via state_manager (scheduler + state + calendar + persist)
+        success, deleted_calendar = await self.state_manager.cancel_announcement_detailed(
+            guild_id, job.message_id
+        )
 
-        if result:
-            # Also update AnnouncementState
-            announcement_cog = self.bot.get_cog('AnnouncementCog')
-            if announcement_cog:
-                state = announcement_cog._get_state(guild_id)
-                calendar_event_id = state.cancel(job.message_id)
-
-                # Delete calendar event if one was associated
-                if calendar_event_id:
-                    group_id = None
-                    guild_conf = self._get_guild_config(guild_id)
-                    if guild_conf:
-                        group_id = guild_conf.get('group_id')
-                    if group_id:
-                        vrchat_api = announcement_cog.vrchat_api
-                        await vrchat_api.delete_group_calendar_event(group_id, calendar_event_id)
-                        await ctx.send(Messages.Discord.CALENDAR_DELETED_WITH_CANCEL)
-
-                # Persist the cancellation to Firestore
-                await announcement_cog.save_state(guild_id)
+        if success:
+            if deleted_calendar:
+                await ctx.send(Messages.Discord.CALENDAR_DELETED_WITH_CANCEL)
             await ctx.reply(Messages.Discord.JOB_CANCELLED.format(job_id))
         else:
             await ctx.reply(Messages.Discord.JOB_NOT_FOUND.format(job_id))

@@ -2,20 +2,17 @@ import logging
 import discord
 from discord.ext import commands
 from discord import app_commands
-import asyncio
-import uuid
 import time
 from utils.messages import Messages
-from utils.announcement_state import AnnouncementState
 
 logger = logging.getLogger(__name__)
 
 class AnnouncementCog(commands.Cog):
-    def __init__(self, bot, config, ai_processor, scheduler, guild_persistences, vrchat_api):
+    def __init__(self, bot, config, ai_processor, state_manager, vrchat_api):
         self.bot = bot
         self.config = config
         self.ai_processor = ai_processor
-        self.scheduler = scheduler
+        self.state_manager = state_manager
         self.vrchat_api = vrchat_api
 
         # Per-guild config lookup: guild_id (str) -> config dict
@@ -29,106 +26,17 @@ class AnnouncementCog(commands.Cog):
         for guild_conf in self.guild_configs.values():
             self._all_channel_ids.update(guild_conf.get('channel_ids', []))
 
-        # Per-guild announcement state (lazily populated in on_ready)
-        self.guild_states = {}  # guild_id -> AnnouncementState
-
-        # Per-guild persistences passed from bot
-        self.guild_persistences = guild_persistences  # guild_id -> Persistence
-
         # Global emoji config (shared across guilds)
         self.seen_emoji = config['discord'].get('seen_reaction_emoji', "👀")
         self.approval_emoji = config['discord'].get('approval_reaction_emoji', "👍")
         self.fast_forward_emoji = config['discord'].get('fast_forward_emoji', "⏩")
         self.calendar_emoji = config['discord'].get('calendar_emoji', "📅")
 
-        # Admin user ID (receives OTP DMs and config warnings)
+        # Admin user ID (receives config warnings)
         self.admin_id = config['discord'].get('admin_id')
 
-        self.otp_requests = {}  # request_id -> {'future': Future, 'message_id': int}
-
-        # Set up OTP callback for VRChat API
-        self.vrchat_api.set_otp_callback(self._request_otp)
-
         # Set up job completion callback
-        self.scheduler.set_on_job_completion(self._on_job_complete)
-
-        # Load state will be called in on_ready
-
-    # --- Guild config helpers ---
-
-    def _get_guild_config(self, guild_id):
-        """Return the config for a guild, or None if not configured."""
-        return self.guild_configs.get(guild_id)
-
-    def _get_state(self, guild_id):
-        """Return (or lazily create) the AnnouncementState for a guild."""
-        if guild_id not in self.guild_states:
-            self.guild_states[guild_id] = AnnouncementState()
-        return self.guild_states[guild_id]
-
-    def _get_persistence(self, guild_id):
-        """Return the Persistence for a guild."""
-        return self.guild_persistences.get(guild_id)
-
-    def _is_guild_enabled(self, guild_id):
-        """Return True if the guild is enabled for new announcement requests."""
-        guild_conf = self._get_guild_config(guild_id)
-        if guild_conf is None:
-            return False
-        return guild_conf.get('enabled', True)
-
-    def _get_admin_role_id(self, guild_id):
-        """Return the admin_role_id for a guild."""
-        guild_conf = self._get_guild_config(guild_id)
-        if guild_conf is None:
-            return None
-        return guild_conf.get('admin_role_id')
-
-    def _get_group_id(self, guild_id):
-        """Return the VRChat group_id for a guild."""
-        guild_conf = self._get_guild_config(guild_id)
-        if guild_conf is None:
-            return None
-        return guild_conf.get('group_id')
-
-    # --- State persistence ---
-
-    async def save_state(self, guild_id=None):
-        """Save the current state to Firestore for the given guild.
-
-        If guild_id is None, saves all guilds.
-        """
-        guilds_to_save = [guild_id] if guild_id is not None else list(self.guild_states.keys())
-        for gid in guilds_to_save:
-            state = self._get_state(gid)
-            persistence = self._get_persistence(gid)
-            if persistence:
-                await state.save(persistence)
-                await persistence.save_data('jobs', self.scheduler.get_jobs_data(guild_id=gid))
-
-    async def load_state(self, guild_id):
-        """Load state from Firestore for a specific guild."""
-        state = self._get_state(guild_id)
-        persistence = self._get_persistence(guild_id)
-        if not persistence:
-            return 0, 0, []
-
-        await state.load(persistence)
-
-        jobs_data = await persistence.load_data('jobs', [])
-        restored_count, skipped_jobs = self.scheduler.restore_jobs(
-            jobs_data,
-            guild_id=guild_id,
-            group_id=self._get_group_id(guild_id),
-        )
-
-        # Rebuild queued_announcements from restored active jobs
-        state.queued_announcements = set()
-        for job in self.scheduler.list_jobs(guild_id=guild_id):
-            if job.message_id:
-                state.queued_announcements.add(job.message_id)
-
-        return restored_count, len(state.pending_requests), skipped_jobs
+        self.state_manager.scheduler.set_on_job_completion(self._on_job_complete)
 
     # --- Callbacks ---
 
@@ -139,80 +47,42 @@ class AnnouncementCog(commands.Cog):
             status = job_data.get('status', 'success')
             guild_id = job_data['guild_id']
 
+            gctx = self.state_manager.get_guild_context(guild_id)
+
             if message_id and status == 'success':
-                state = self._get_state(guild_id)
-                state.mark_completed(message_id)
+                gctx.state.mark_completed(message_id)
 
             # Save state for both success and failure
-            await self.save_state(guild_id)
+            await gctx.save_state()
             logger.info(f"Job {status} and state saved: {message_id}")
         except Exception as e:
             logger.error(f"Error in job completion callback: {e}")
 
-    # --- OTP handling ---
-
-    async def _request_otp(self, otp_type):
-        """Request OTP from the configured admin user via DM"""
-        if not self.admin_id:
-            logger.error(Messages.Log.OTP_DM_USER_NOT_CONFIGURED)
-            return None
-
-        try:
-            user = await self.bot.fetch_user(int(self.admin_id))
-        except Exception:
-            logger.error(Messages.Log.OTP_DM_USER_NOT_FOUND)
-            return None
-
-        # Create a unique request ID
-        request_id = str(uuid.uuid4())
-
-        # Create a future to wait for the response
-        future = asyncio.Future()
-
-        # Open DM channel and send request
-        dm_channel = await user.create_dm()
-        message = await dm_channel.send(Messages.Discord.OTP_REQUEST_DM.format(otp_type=otp_type))
-
-        # Store request with the sent message ID for reply-to verification
-        self.otp_requests[request_id] = {'future': future, 'message_id': message.id}
-
-        try:
-            # Wait for response with timeout
-            otp = await asyncio.wait_for(future, timeout=300)  # 5 minute timeout
-            return otp
-        except asyncio.TimeoutError:
-            await message.edit(content=Messages.Discord.OTP_TIMEOUT_DM)
-            return None
-        finally:
-            # Clean up
-            if request_id in self.otp_requests:
-                del self.otp_requests[request_id]
-
     # --- Missed reaction warning ---
 
-    async def _warn_missed_reactions(self, guild_id, channel_ids):
+    async def _warn_missed_reactions(self, gctx):
         """Warn about reactions that may have been added while the bot was offline.
 
         Rather than automatically acting on missed reactions (which could be
         surprising), we reply to the original request message so the user knows
         they need to re-react now that the bot is back online.
         """
-        state = self._get_state(guild_id)
+        scheduler = self.state_manager.scheduler
 
         # Only check non-terminal jobs that have a bot reply
         actionable_jobs = [
-            j for j in self.scheduler.jobs.values()
-            if j.guild_id == guild_id and j.status not in ('success', 'cancelled')
+            j for j in scheduler.jobs.values()
+            if j.guild_id == gctx.guild_id and j.status not in ('success', 'cancelled')
         ]
 
         for job in actionable_jobs:
-            bot_reply_id = state.get_bot_reply_id(job.message_id)
+            bot_reply_id = gctx.state.get_bot_reply_id(job.message_id)
             if not bot_reply_id:
                 continue
 
             # Try to find and fetch the bot reply message
             bot_reply_msg = None
-            for cid in channel_ids:
+            for cid in gctx.channel_ids:
                 channel = self.bot.get_channel(int(cid))
                 if not channel:
                     continue
@@ -236,7 +106,7 @@ class AnnouncementCog(commands.Cog):
                         missed_emojis.append(self.fast_forward_emoji)
                 elif emoji_str == self.calendar_emoji:
                     if reaction.count > 1 or (reaction.count == 1 and not reaction.me):
-                        if not state.has_calendar_event(job.message_id):
+                        if not gctx.state.has_calendar_event(job.message_id):
                             missed_emojis.append(self.calendar_emoji)
 
             if missed_emojis:
@@ -269,22 +139,22 @@ class AnnouncementCog(commands.Cog):
                 except Exception:
                     logger.warning(f"Could not DM admin about invalid channels: {invalid_channels}")
 
-            for gid, guild_conf in self.guild_configs.items():
-                channel_ids = guild_conf.get('channel_ids', [])
-                if not channel_ids:
+            for gid in self.guild_configs:
+                gctx = self.state_manager.get_guild_context(gid)
+                if not gctx.channel_ids:
                     continue
 
                 # Load state for this guild
-                restored_jobs, pending_count, skipped_jobs = await self.load_state(gid)
+                restored_jobs, pending_count, skipped_jobs = await gctx.load_state()
 
                 # Warn about reactions that may have been added while offline
-                await self._warn_missed_reactions(gid, channel_ids)
+                await self._warn_missed_reactions(gctx)
 
                 # Save state (persists missed-job status updates and any processed reactions)
-                await self.save_state(gid)
+                await gctx.save_state()
 
                 # Send restoration message to first channel
-                channel = self.bot.get_channel(int(channel_ids[0]))
+                channel = self.bot.get_channel(int(gctx.channel_ids[0]))
                 if channel:
                     msg = Messages.Discord.RESTORATION_STATS.format(pending_count, restored_jobs)
                     await channel.send(msg)
@@ -300,19 +170,13 @@ class AnnouncementCog(commands.Cog):
 
     @commands.Cog.listener()
     async def on_message(self, message):
-        """Process messages in the announcement channels or DMs for OTP"""
+        """Process messages in the announcement channels"""
         if message.author.bot:
             return
 
-        # Handle DM messages for OTP responses (reply-to only)
+        # Ignore DMs — OTP handling is in AuthCog
         if isinstance(message.channel, discord.DMChannel):
-            if self.admin_id and str(message.author.id) == self.admin_id:
-                if message.reference and message.reference.message_id:
-                    for request_id, request in list(self.otp_requests.items()):
-                        if not request['future'].done() and message.reference.message_id == request['message_id']:
-                            request['future'].set_result(message.content.strip())
-                            return
-            return  # Ignore all other DMs
+            return
 
         # Only process guild messages from monitored channels
         if str(message.channel.id) not in self._all_channel_ids:
@@ -320,30 +184,29 @@ class AnnouncementCog(commands.Cog):
 
         # Determine which guild this channel belongs to
         guild_id = str(message.guild.id)
+        gctx = self.state_manager.get_guild_context(guild_id)
 
         # Check if message mentions the bot and is an announcement request
         if self.bot.user.mentioned_in(message):
             # Check if guild is enabled for new requests
-            if not self._is_guild_enabled(guild_id):
+            if not gctx.enabled:
                 await message.reply(Messages.Discord.GUILD_DISABLED)
                 return
-            await self._handle_announcement_request(message)
+            await self._handle_announcement_request(message, gctx)
 
-    async def _handle_announcement_request(self, message):
+    async def _handle_announcement_request(self, message, gctx):
         """Handle a new announcement request"""
         try:
-            guild_id = str(message.guild.id)
             msg_id = str(message.id)
-            state = self._get_state(guild_id)
 
             # Check if this message has already been queued or sent
-            if state.is_queued(msg_id) or state.is_in_history(msg_id):
+            if gctx.state.is_queued(msg_id) or gctx.state.is_in_history(msg_id):
                 await message.reply(Messages.Discord.ALREADY_BOOKED)
                 return
 
             # Simply store the message ID and add reaction
-            state.add_pending(msg_id)
-            await self.save_state(guild_id)
+            gctx.state.add_pending(msg_id)
+            await gctx.save_state()
             await message.add_reaction(self.seen_emoji)
             await message.reply(Messages.Discord.REQUEST_CONFIRMED)
 
@@ -374,82 +237,77 @@ class AnnouncementCog(commands.Cog):
 
         # Determine guild_id for state lookup
         guild_id = str(payload.guild_id)
+        gctx = self.state_manager.get_guild_context(guild_id)
 
         emoji = str(payload.emoji)
         msg_id = str(payload.message_id)
-        state = self._get_state(guild_id)
 
         # Case 1: Approval of pending request (Reaction to User's message)
-        if emoji == self.approval_emoji and state.is_pending(msg_id):
+        if emoji == self.approval_emoji and gctx.state.is_pending(msg_id):
             member = await self._fetch_member_safe(channel, payload.user_id)
-            admin_role_id = self._get_admin_role_id(guild_id)
-            if not self._is_admin(member, admin_role_id):
+            if not self._is_admin(member, gctx.admin_role_id):
                 return
 
-            if state.is_queued(msg_id) or state.is_in_history(msg_id):
+            if gctx.state.is_queued(msg_id) or gctx.state.is_in_history(msg_id):
                 return
 
             message = await channel.fetch_message(payload.message_id)
             if message:
-                await self._process_approved_announcement(message)
+                await self._process_approved_announcement(message, gctx)
             return
 
         # Case 2: Immediate posting of queued announcement (Reaction to Bot's message)
         if emoji == self.fast_forward_emoji:
-            await self._handle_fast_forward_reaction(channel, payload, guild_id)
+            await self._handle_fast_forward_reaction(channel, payload, gctx)
             return
 
         # Case 3: Create Calendar Event (Reaction to Bot's message)
         if emoji == self.calendar_emoji:
-            await self._handle_calendar_reaction(channel, payload, guild_id)
+            await self._handle_calendar_reaction(channel, payload, gctx)
 
-    async def _handle_fast_forward_reaction(self, channel, payload, guild_id):
+    async def _handle_fast_forward_reaction(self, channel, payload, gctx):
         """Handle fast-forward reaction to immediately post a queued announcement"""
-        state = self._get_state(guild_id)
-        request_msg_id = state.find_request_id_by_bot_message(str(payload.message_id))
+        request_msg_id = gctx.state.find_request_id_by_bot_message(str(payload.message_id))
         if not request_msg_id:
             return
 
         # Guard: allow fast-forward for active, missed, or failed jobs (retry)
-        job = self.scheduler.get_job_by_message_id(request_msg_id)
+        job = self.state_manager.scheduler.get_job_by_message_id(request_msg_id)
         if not job or job.status not in ('pending', 'missed', 'failed'):
             return
 
         try:
             request_message = await channel.fetch_message(int(request_msg_id))
             member = await self._fetch_member_safe(channel, payload.user_id)
-            admin_role_id = self._get_admin_role_id(guild_id)
 
-            if self._is_admin(member, admin_role_id) or request_message.author.id == payload.user_id:
-                await self._process_immediate_post(request_msg_id, payload.channel_id, payload.message_id, guild_id)
+            if self._is_admin(member, gctx.admin_role_id) or request_message.author.id == payload.user_id:
+                await self._process_immediate_post(request_msg_id, payload.channel_id, payload.message_id, gctx)
         except Exception as e:
             logger.error(f"Error handling immediate post request: {e}")
 
-    async def _handle_calendar_reaction(self, channel, payload, guild_id):
+    async def _handle_calendar_reaction(self, channel, payload, gctx):
         """Handle calendar reaction to create a VRChat calendar event"""
-        state = self._get_state(guild_id)
-        request_msg_id = state.find_request_id_by_bot_message(str(payload.message_id))
+        request_msg_id = gctx.state.find_request_id_by_bot_message(str(payload.message_id))
         if not request_msg_id:
             return
 
         # Check if event already exists
-        if state.has_calendar_event(request_msg_id):
+        if gctx.state.has_calendar_event(request_msg_id):
             return
 
         # Guard: allow calendar creation for any non-cancelled job.
         # Calendar events are independent of announcement posting status — even
         # failed or missed announcements may need a calendar entry.
-        job = self.scheduler.get_job_by_message_id(request_msg_id)
+        job = self.state_manager.scheduler.get_job_by_message_id(request_msg_id)
         if not job or job.status == 'cancelled':
             return
 
         try:
             request_message = await channel.fetch_message(int(request_msg_id))
             member = await self._fetch_member_safe(channel, payload.user_id)
-            admin_role_id = self._get_admin_role_id(guild_id)
 
-            if self._is_admin(member, admin_role_id) or request_message.author.id == payload.user_id:
-                await self._process_calendar_event_creation(request_message, channel, guild_id)
+            if self._is_admin(member, gctx.admin_role_id) or request_message.author.id == payload.user_id:
+                await self._process_calendar_event_creation(request_message, channel, gctx)
         except Exception as e:
             logger.error(f"Error handling calendar event creation: {e}")
 
@@ -473,35 +331,33 @@ class AnnouncementCog(commands.Cog):
             return
 
         guild_id = str(payload.guild_id)
+        gctx = self.state_manager.get_guild_context(guild_id)
         emoji = str(payload.emoji)
 
         # Case: Removal of Calendar reaction
         if emoji == self.calendar_emoji:
-            await self._handle_calendar_reaction_remove(channel, payload, guild_id)
+            await self._handle_calendar_reaction_remove(channel, payload, gctx)
 
         # Case: Removal of Approval reaction (on User's message)
         elif emoji == self.approval_emoji:
-            await self._handle_approval_reaction_remove(channel, payload, guild_id)
+            await self._handle_approval_reaction_remove(channel, payload, gctx)
 
-    async def _handle_calendar_reaction_remove(self, channel, payload, guild_id):
+    async def _handle_calendar_reaction_remove(self, channel, payload, gctx):
         """Handle removal of calendar reaction to delete the VRChat calendar event"""
-        state = self._get_state(guild_id)
-        request_msg_id = state.find_request_id_by_bot_message(str(payload.message_id))
-        if not request_msg_id or not state.has_calendar_event(request_msg_id):
+        request_msg_id = gctx.state.find_request_id_by_bot_message(str(payload.message_id))
+        if not request_msg_id or not gctx.state.has_calendar_event(request_msg_id):
             return
 
         try:
             member = await channel.guild.fetch_member(payload.user_id)
             request_message = await channel.fetch_message(int(request_msg_id))
-            admin_role_id = self._get_admin_role_id(guild_id)
 
-            if not (self._is_admin(member, admin_role_id) or request_message.author.id == payload.user_id):
+            if not (self._is_admin(member, gctx.admin_role_id) or request_message.author.id == payload.user_id):
                 return
 
-            calendar_event_id = state.remove_calendar_event(request_msg_id)
-            group_id = self._get_group_id(guild_id)
-            result = await self.vrchat_api.delete_group_calendar_event(group_id, calendar_event_id)
-            await self.save_state(guild_id)
+            calendar_event_id = gctx.state.remove_calendar_event(request_msg_id)
+            result = await self.vrchat_api.delete_group_calendar_event(gctx.group_id, calendar_event_id)
+            await gctx.save_state()
             if result.success:
                 await channel.send(Messages.Discord.CALENDAR_DELETED)
             else:
@@ -509,11 +365,10 @@ class AnnouncementCog(commands.Cog):
         except Exception as e:
             logger.error(Messages.Log.CALENDAR_EVENT_DELETE_ERROR.format(e))
 
-    async def _handle_approval_reaction_remove(self, channel, payload, guild_id):
+    async def _handle_approval_reaction_remove(self, channel, payload, gctx):
         """Handle removal of approval reaction to cancel a queued announcement"""
-        state = self._get_state(guild_id)
         msg_id = str(payload.message_id)
-        if not state.is_queued(msg_id):
+        if not gctx.state.is_queued(msg_id):
             return
 
         message = await channel.fetch_message(payload.message_id)
@@ -525,11 +380,8 @@ class AnnouncementCog(commands.Cog):
         if approval_reactions and approval_reactions[0].count > 0:
             return
 
-        # Cancel the job (sets status to 'cancelled', keeps in memory)
-        if not self.scheduler.cancel_job_by_message_id(msg_id):
-            return
-
-        bot_reply_id = state.get_bot_reply_id(msg_id)
+        # Delete the bot reply message before cancelling
+        bot_reply_id = gctx.state.get_bot_reply_id(msg_id)
         if bot_reply_id:
             try:
                 scheduled_msg = await channel.fetch_message(bot_reply_id)
@@ -538,14 +390,14 @@ class AnnouncementCog(commands.Cog):
             except Exception as e:
                 logger.error(Messages.Log.SCHEDULED_MSG_DELETE_ERROR.format(e))
 
-        # Cancel in state (sets pending to None, calendar to None)
-        calendar_event_id = state.cancel(msg_id)
-        if calendar_event_id:
-            group_id = self._get_group_id(guild_id)
-            await self.vrchat_api.delete_group_calendar_event(group_id, calendar_event_id)
+        # Cancel via GuildContext (scheduler + state + calendar + persist)
+        success, deleted_calendar = await gctx.cancel_announcement_detailed(msg_id)
+        if not success:
+            return
+
+        if deleted_calendar:
             await channel.send(Messages.Discord.CALENDAR_DELETED_WITH_CANCEL)
 
-        await self.save_state(guild_id)
         await message.reply(Messages.Discord.BOOKING_CANCELLED)
 
     # --- Permission helpers ---
@@ -565,10 +417,10 @@ class AnnouncementCog(commands.Cog):
 
     # --- Business logic ---
 
-    async def _process_calendar_event_creation(self, message, channel, guild_id):
+    async def _process_calendar_event_creation(self, message, channel, gctx):
         """Process the creation of a VRChat calendar event"""
         try:
-            job = self.scheduler.get_job_by_message_id(str(message.id))
+            job = self.state_manager.scheduler.get_job_by_message_id(str(message.id))
             if not job:
                 logger.warning(Messages.Log.CALENDAR_EVENT_CREATE_WARNING.format(message.id))
                 return
@@ -589,19 +441,17 @@ class AnnouncementCog(commands.Cog):
                 return
 
             # Call VRChat API
-            group_id = self._get_group_id(guild_id)
-            result = await self.vrchat_api.create_group_calendar_event(group_id, title, content, start_at, end_at)
+            result = await self.vrchat_api.create_group_calendar_event(gctx.group_id, title, content, start_at, end_at)
 
             if result.success:
                 calendar_id = result.data['event_id']
 
                 # Store event ID
-                state = self._get_state(guild_id)
-                state.set_calendar_event(str(message.id), calendar_id)
-                await self.save_state(guild_id)
+                gctx.state.set_calendar_event(str(message.id), calendar_id)
+                await gctx.save_state()
 
                 # Send success message
-                calendar_url = f"https://vrchat.com/home/group/{group_id}/calendar/{calendar_id}"
+                calendar_url = f"https://vrchat.com/home/group/{gctx.group_id}/calendar/{calendar_id}"
                 await channel.send(Messages.Discord.CALENDAR_CREATED.format(calendar_url))
             else:
                 error_msg = result.error or 'Unknown error'
@@ -612,10 +462,12 @@ class AnnouncementCog(commands.Cog):
             logger.error(Messages.Log.CALENDAR_EVENT_CREATE_EXCEPTION.format(e))
             await channel.send(Messages.Discord.ERROR_OCCURRED.format(str(e)))
 
-    async def _process_immediate_post(self, request_msg_id, channel_id, processing_msg_id, guild_id):
+    async def _process_immediate_post(self, request_msg_id, channel_id, processing_msg_id, gctx):
         """Process an immediate post request (fast-forward)"""
+        scheduler = self.state_manager.scheduler
+
         # Get job details — allow reposting for pending, missed, or failed jobs
-        job = self.scheduler.get_job_by_message_id(request_msg_id)
+        job = scheduler.get_job_by_message_id(request_msg_id)
         if not job or job.status not in ('pending', 'missed', 'failed'):
             return
 
@@ -626,16 +478,15 @@ class AnnouncementCog(commands.Cog):
         processing_msg = await channel.fetch_message(processing_msg_id)
 
         # Remove from APScheduler if present (no-op for missed jobs)
-        self.scheduler.unschedule_job(job.id)
+        scheduler.unschedule_job(job.id)
 
         # Post immediately
         try:
-            group_id = self._get_group_id(guild_id)
-            result = await self.vrchat_api.post_announcement(group_id, job.title, job.content)
+            result = await self.vrchat_api.post_announcement(gctx.group_id, job.title, job.content)
 
             if result.success:
                 # Mark the job as successfully completed
-                self.scheduler.mark_job_success(job.id)
+                scheduler.mark_job_success(job.id)
 
                 # Update embed to show success
                 embed = processing_msg.embeds[0]
@@ -646,26 +497,25 @@ class AnnouncementCog(commands.Cog):
                 await processing_msg.edit(embed=embed)
 
                 # Mark completed in state
-                state = self._get_state(guild_id)
-                state.mark_completed(str(request_msg_id))
+                gctx.state.mark_completed(str(request_msg_id))
 
-                await self.save_state(guild_id)
+                await gctx.save_state()
             else:
                 # Mark the job as failed
-                self.scheduler.mark_job_failed(job.id)
-                await self.save_state(guild_id)
+                scheduler.mark_job_failed(job.id)
+                await gctx.save_state()
                 await channel.send(Messages.Discord.IMMEDIATE_POST_FAIL.format(result.error))
 
         except Exception as e:
             logger.error(f"Error in immediate post: {e}")
             # Mark job as failed so it's not silently lost
-            self.scheduler.mark_job_failed(job.id)
-            await self.save_state(guild_id)
+            scheduler.mark_job_failed(job.id)
+            await gctx.save_state()
             await channel.send(Messages.Discord.IMMEDIATE_POST_FAIL.format(str(e)))
 
     def _is_timestamp_too_old(self, timestamp) -> bool:
         """Check if a timestamp is more than misfire_grace_time seconds in the past."""
-        return timestamp < time.time() - self.scheduler.misfire_grace_time
+        return timestamp < time.time() - self.state_manager.scheduler.misfire_grace_time
 
     def _build_booking_embed(self, result, job_id) -> discord.Embed:
         """Build the confirmation embed for a booked announcement."""
@@ -688,12 +538,9 @@ class AnnouncementCog(commands.Cog):
 
         return embed
 
-    async def _process_approved_announcement(self, message):
+    async def _process_approved_announcement(self, message, gctx):
         """Process an approved announcement request"""
         try:
-            guild_id = str(message.guild.id)
-            state = self._get_state(guild_id)
-
             # Send processing message
             processing_msg = await message.reply(Messages.Discord.PROCESSING)
 
@@ -706,22 +553,20 @@ class AnnouncementCog(commands.Cog):
 
             # Check if timestamp is too far in the past
             if self._is_timestamp_too_old(result.timestamp):
-                admin_role_id = self._get_admin_role_id(guild_id)
-                role_mention = f"<@&{admin_role_id}>" if admin_role_id else ""
+                role_mention = f"<@&{gctx.admin_role_id}>" if gctx.admin_role_id else ""
                 author_mention = message.author.mention
                 mentions = f"{role_mention} {author_mention}".strip()
                 await processing_msg.edit(content=Messages.Discord.PAST_TIME_WARNING.format(mentions=mentions))
                 return
 
             # Schedule the announcement
-            group_id = self._get_group_id(guild_id)
-            job_id = await self.scheduler.schedule_announcement(
+            job_id = await self.state_manager.scheduler.schedule_announcement(
                 result.announcement_timestamp,
                 result.title,
                 result.content,
                 str(message.id),
-                guild_id=guild_id,
-                group_id=group_id,
+                guild_id=gctx.guild_id,
+                group_id=gctx.group_id,
                 event_start_timestamp=result.event_start_timestamp,
                 event_end_timestamp=result.event_end_timestamp,
                 event_title=result.event_title,
@@ -732,13 +577,13 @@ class AnnouncementCog(commands.Cog):
             await processing_msg.edit(content=None, embed=embed)
 
             # Update state
-            state.mark_queued(str(message.id), str(processing_msg.id))
+            gctx.state.mark_queued(str(message.id), str(processing_msg.id))
 
             # Add calendar and fast-forward reactions for quick access
             await processing_msg.add_reaction(self.calendar_emoji)
             await processing_msg.add_reaction(self.fast_forward_emoji)
 
-            await self.save_state(guild_id)
+            await gctx.save_state()
 
         except Exception as e:
             logger.error(Messages.Log.APPROVED_ANNOUNCEMENT_ERROR.format(e))

@@ -2,6 +2,31 @@ This file contains information of the business logic architecture of the repo.
 It is not meant to be read by agents, but only human.
 However, if any change is made to the logic, this file should be changes accordingly to give human a better understanding of the repo.
 
+### Module Structure
+
+```
+bot.py                  Entry point — initializes all components and wires them together
+├─→ StateManager        (utils/state_manager.py) Owns per-guild state, persistence, and Scheduler
+│   ├─→ GuildContext       Pre-resolved per-guild references (state, group_id, admin_role_id, etc.)
+│   ├─→ AnnouncementState  (utils/announcement_state.py) In-memory state per guild
+│   ├─→ Persistence        (utils/persistence.py) Firestore read/write per guild
+│   ├─→ Scheduler          (utils/scheduler.py) Job scheduling, status, persistence + cancel
+│   └─→ VRChatAPI          (utils/vrchat_api.py) Calendar event deletion on cancel
+├─→ AuthCog             (cogs/auth.py) OTP handling — bot-level admin DM interactions
+│   └─→ VRChatAPI          Sets OTP callback for 2FA
+├─→ AnnouncementCog     (cogs/announcement.py) Announcement workflow + reactions
+│   ├─→ AIProcessor        (utils/ai_processor.py) Extract event details from messages
+│   ├─→ StateManager       State, persistence, Scheduler (via state_manager.scheduler)
+│   └─→ VRChatAPI          Post announcements, manage calendar events
+├─→ AdminCog            (cogs/admin.py) Server admin commands (/list, /cancel, /help)
+│   └─→ StateManager       State, Scheduler queries, cancel + persist
+└─→ GeneralCog          (cogs/general.py) Miscellaneous commands
+```
+
+No cog-to-cog dependencies exist. Both `AnnouncementCog` and `AdminCog` depend on `StateManager` for state and scheduler operations rather than reaching into each other. Cogs access the scheduler via `state_manager.scheduler` rather than holding a direct reference. `AuthCog` handles bot-level admin concerns (OTP from the single bot admin), while `AdminCog` handles per-guild server admin commands.
+
+Per-guild operations use `GuildContext` objects (obtained via `state_manager.get_guild_context(guild_id)`) which bundle pre-resolved references like `state`, `group_id`, `admin_role_id`, `enabled`, and `channel_ids`, eliminating repeated config lookups.
+
 ### Configuration
 
 - **config.yaml** — Discord channel IDs, admin role, emoji reactions, OpenRouter model, VRChat group ID, Firestore server ID.
