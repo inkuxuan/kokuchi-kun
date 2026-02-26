@@ -8,8 +8,8 @@ from vrchatapi.exceptions import UnauthorizedException, ApiException
 from vrchatapi.models.create_calendar_event_request import CreateCalendarEventRequest
 from vrchatapi.models.two_factor_auth_code import TwoFactorAuthCode
 from vrchatapi.models.two_factor_email_code import TwoFactorEmailCode
-from utils.messages import Messages
-from utils.models import AuthResult, ApiResult
+from kokuchi.common.messages import Messages
+from kokuchi.common.models import AuthResult, ApiResult
 
 logger = logging.getLogger(__name__)
 

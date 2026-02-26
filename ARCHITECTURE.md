@@ -2,20 +2,36 @@ This file contains information of the business logic architecture of the repo.
 It is not meant to be read by agents, but only human.
 However, if any change is made to the logic, this file should be changes accordingly to give human a better understanding of the repo.
 
+### Folder Structure
+
+```
+src/kokuchi/              Main Python package
+├── cogs/                 discord.py Cogs — self-contained extensions that group related
+│                         commands and event listeners into loadable modules
+├── state/                Data ownership — in-memory per-guild state, Firestore
+│                         persistence, and the StateManager facade
+├── services/             External service integrations — VRChat API client,
+│                         AI processor (OpenRouter), job scheduler (APScheduler)
+└── common/               Shared utilities — data models/DTOs, string constants, version
+tests/                    Test suite
+scripts/                  Development scripts (version bumping, Firestore migration)
+docs/                     VitePress documentation site (en + ja)
+```
+
 ### Module Structure
 
 ```
 bot.py                  Entry point — initializes all components and wires them together
-├─→ StateManager        (utils/state_manager.py) Owns per-guild state, persistence, and Scheduler
+├─→ StateManager        (state/state_manager.py) Owns per-guild state, persistence, and Scheduler
 │   ├─→ GuildContext       Pre-resolved per-guild references (state, group_id, admin_role_id, etc.)
-│   ├─→ AnnouncementState  (utils/announcement_state.py) In-memory state per guild
-│   ├─→ Persistence        (utils/persistence.py) Firestore read/write per guild
-│   ├─→ Scheduler          (utils/scheduler.py) Job scheduling, status, persistence + cancel
-│   └─→ VRChatAPI          (utils/vrchat_api.py) Calendar event deletion on cancel
+│   ├─→ AnnouncementState  (state/announcement_state.py) In-memory state per guild
+│   ├─→ Persistence        (state/persistence.py) Firestore read/write per guild
+│   ├─→ Scheduler          (services/scheduler.py) Job scheduling, status, persistence + cancel
+│   └─→ VRChatAPI          (services/vrchat_api.py) Calendar event deletion on cancel
 ├─→ AuthCog             (cogs/auth.py) OTP handling — bot-level admin DM interactions
 │   └─→ VRChatAPI          Sets OTP callback for 2FA
 ├─→ AnnouncementCog     (cogs/announcement.py) Announcement workflow + reactions
-│   ├─→ AIProcessor        (utils/ai_processor.py) Extract event details from messages
+│   ├─→ AIProcessor        (services/ai_processor.py) Extract event details from messages
 │   ├─→ StateManager       State, persistence, Scheduler (via state_manager.scheduler)
 │   └─→ VRChatAPI          Post announcements, manage calendar events
 ├─→ AdminCog            (cogs/admin.py) Server admin commands (/list, /cancel, /help)

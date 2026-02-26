@@ -1,1 +1,1 @@
-uv run --frozen bot.py
+uv run --frozen -m kokuchi.bot

@@ -4,8 +4,8 @@ import openai
 from datetime import datetime, timedelta
 import pytz
 from dateutil import parser
-from utils.messages import Messages
-from utils.models import AIProcessingResult
+from kokuchi.common.messages import Messages
+from kokuchi.common.models import AIProcessingResult
 
 logger = logging.getLogger(__name__)
 

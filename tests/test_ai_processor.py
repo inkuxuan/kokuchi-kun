@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import MagicMock, AsyncMock, patch
 from datetime import datetime
 import pytz
-from utils.ai_processor import AIProcessor
+from kokuchi.services.ai_processor import AIProcessor
 
 @pytest.fixture
 def mock_config():

@@ -15,16 +15,16 @@ import discord
 from discord.ext import commands, tasks
 import traceback
 
-from utils.vrchat_api import VRChatAPI
-from utils.ai_processor import AIProcessor
-from utils.scheduler import Scheduler
-from utils.persistence import Persistence
-from utils.state_manager import StateManager
-from cogs.announcement import AnnouncementCog
-from cogs.admin import AdminCog
-from cogs.auth import AuthCog
-from cogs.general import GeneralCog
-from utils.messages import Messages
+from kokuchi.services.vrchat_api import VRChatAPI
+from kokuchi.services.ai_processor import AIProcessor
+from kokuchi.services.scheduler import Scheduler
+from kokuchi.state.persistence import Persistence
+from kokuchi.state.state_manager import StateManager
+from kokuchi.cogs.announcement import AnnouncementCog
+from kokuchi.cogs.admin import AdminCog
+from kokuchi.cogs.auth import AuthCog
+from kokuchi.cogs.general import GeneralCog
+from kokuchi.common.messages import Messages
 
 def ensure_config_exists():
     """Create config.yaml from template if it is missing, then exit so the user can fill it in."""

@@ -6,11 +6,11 @@ import sys
 import os
 import time
 
-from cogs.admin import AdminCog
-from cogs.announcement import AnnouncementCog
-from utils.state_manager import StateManager
-from utils.messages import Messages
-from utils.models import AIProcessingResult, JobData
+from kokuchi.cogs.admin import AdminCog
+from kokuchi.cogs.announcement import AnnouncementCog
+from kokuchi.state.state_manager import StateManager
+from kokuchi.common.messages import Messages
+from kokuchi.common.models import AIProcessingResult, JobData
 
 # Guild ID used consistently across all tests
 TEST_GUILD_ID = 111111111

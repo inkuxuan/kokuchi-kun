@@ -43,7 +43,7 @@ Do **not** commit `node_modules/` or `docs/.vitepress/dist` — they are exclude
 
 # Coding Guidelines
 
-- Messages sent by the bot should be stored as constants in `utils/messages.py`
+- Messages sent by the bot should be stored as constants in `src/kokuchi/common/messages.py`
 - Logs can be literals
 - All timezone calculations use JST (`Asia/Tokyo`)
 - **If you change any logic** (state transitions, job lifecycle, reaction handling, etc.), update the relevant sections in [ARCHITECTURE.md](ARCHITECTURE.md) updated.

@@ -3,7 +3,7 @@ import uuid
 import asyncio
 import discord
 from discord.ext import commands
-from utils.messages import Messages
+from kokuchi.common.messages import Messages
 
 logger = logging.getLogger(__name__)
 

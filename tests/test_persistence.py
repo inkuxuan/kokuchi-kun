@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from utils.persistence import Persistence
+from kokuchi.state.persistence import Persistence
 
 
 class TestPersistence:
@@ -13,7 +13,7 @@ class TestPersistence:
     @pytest.fixture
     def persistence(self, mock_db):
         """Create a Persistence instance with a mocked Firestore client."""
-        with patch('utils.persistence.AsyncClient', return_value=mock_db):
+        with patch('kokuchi.state.persistence.AsyncClient', return_value=mock_db):
             p = Persistence(server_id='test-server')
         return p
 

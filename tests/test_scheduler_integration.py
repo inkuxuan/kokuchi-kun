@@ -1,6 +1,6 @@
 import unittest
 from unittest.mock import MagicMock, AsyncMock
-from utils.scheduler import Scheduler
+from kokuchi.services.scheduler import Scheduler
 import asyncio
 from datetime import datetime
 import pytz

@@ -2,8 +2,8 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 import logging
-from utils.messages import Messages
-from utils.version import get_version
+from kokuchi.common.messages import Messages
+from kokuchi.common.version import get_version
 
 logger = logging.getLogger(__name__)
 

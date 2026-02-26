@@ -4,8 +4,8 @@ from datetime import datetime
 import pytz
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.jobstores.memory import MemoryJobStore
-from utils.messages import Messages
-from utils.models import JobData
+from kokuchi.common.messages import Messages
+from kokuchi.common.models import JobData
 
 logger = logging.getLogger(__name__)
 

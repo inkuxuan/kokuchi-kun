@@ -1,5 +1,5 @@
 import logging
-from utils.announcement_state import AnnouncementState
+from kokuchi.state.announcement_state import AnnouncementState
 
 logger = logging.getLogger(__name__)
 
