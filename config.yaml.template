@@ -62,6 +62,9 @@ openrouter:
     ======メッセージ終了======
 
 
+scheduler:
+  misfire_grace_time: 3600  # seconds - allow execution up to this many seconds late (default: 3600)
+
 vrchat:
   heartbeat_interval: 60 # minutes
 

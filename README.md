@@ -78,6 +78,6 @@ or alternatively use `run.bat` / `run.sh`
 
 ## Contributing
 
-See [AGENTS.md](AGENTS.md) for development environment setup, commands, architecture, and coding guidelines.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development environment setup, commands, architecture, and coding guidelines.
 
 

@@ -9,21 +9,29 @@ from utils.models import JobData
 
 logger = logging.getLogger(__name__)
 
+# Job statuses that indicate the job is terminal (no longer active)
+TERMINAL_STATUSES = frozenset({'success', 'failed', 'cancelled'})
+
 class Scheduler:
-    def __init__(self, vrchat_api):
+    def __init__(self, vrchat_api, scheduler_config=None):
         self.vrchat_api = vrchat_api
         self.scheduler = AsyncIOScheduler()
         self.scheduler.add_jobstore(MemoryJobStore(), 'default')
         self.jobs = {}
         self.on_job_completion = None
-        
+
+        # Load misfire_grace_time from config (default: 3600 seconds = 1 hour)
+        if scheduler_config is None:
+            scheduler_config = {}
+        self.misfire_grace_time = scheduler_config.get('misfire_grace_time', 3600)
+
         # Start the scheduler
         self.scheduler.start()
 
     def set_on_job_completion(self, callback):
         """Set callback for job completion (success or failure)"""
         self.on_job_completion = callback
-        
+
     async def schedule_announcement(self, timestamp, title, content, message_id, guild_id,
                                     group_id=None,
                                     event_start_timestamp=None, event_end_timestamp=None, event_title=None):
@@ -40,7 +48,7 @@ class Scheduler:
             run_date=run_date,
             args=[job_id, title, content, group_id],
             id=job_id,
-            misfire_grace_time=3600  # Allow execution up to 1 hour late (immediate post for recent past)
+            misfire_grace_time=self.misfire_grace_time
         )
 
         # Store job info
@@ -62,7 +70,7 @@ class Scheduler:
         )
 
         return job_id
-        
+
     async def _post_announcement(self, job_id, title, content, group_id):
         """Execute the announcement posting"""
         try:
@@ -92,16 +100,10 @@ class Scheduler:
                 if "Authentication failed" in result.error:
                     return
 
-            # Copy job data before potential deletion
-            job_data = self.jobs[job_id].to_dict()
-
-            # Remove the job from the jobs dictionary if it succeeded
-            if self.jobs[job_id].status == 'success':
-                del self.jobs[job_id]
-
             # Notify callback for both success and failure to persist state
+            # Note: we do NOT delete the job from self.jobs — status update is sufficient
             if self.on_job_completion:
-                await self.on_job_completion(job_data)
+                await self.on_job_completion(self.jobs[job_id].to_dict())
 
         except Exception as e:
             logger.error(Messages.Log.JOB_EXEC_ERROR.format(job_id, e))
@@ -109,9 +111,17 @@ class Scheduler:
                 self.jobs[job_id].status = 'failed'
                 if self.on_job_completion:
                     await self.on_job_completion(self.jobs[job_id].to_dict())
-    
+
     def restore_jobs(self, jobs_list, guild_id=None, group_id=None):
         """Restore jobs from storage. Returns (restored_count, skipped_jobs_list)
+
+        Jobs with terminal statuses (success/failed/cancelled) are kept in memory
+        but not re-scheduled with APScheduler.
+
+        Past-due jobs within misfire_grace_time are scheduled (APScheduler will fire
+        them immediately). Past-due jobs beyond the grace period are marked 'missed'
+        and kept in memory so they can still be fast-forwarded or have calendar events
+        created.
 
         group_id is used as fallback for old jobs that don't have group_id stored.
         """
@@ -121,40 +131,68 @@ class Scheduler:
 
         for job_data in jobs_list:
             try:
-                # Check if job is in the past
-                if job_data['timestamp'] <= current_time:
-                    skipped_jobs.append(job_data)
-                    continue
-
                 job_id = job_data['id']
-                run_date = datetime.fromtimestamp(job_data['timestamp'], tz=pytz.utc)
 
-                # Restore to jobs dict
+                # Migration: fill in missing fields
                 if 'event_title' not in job_data:
                     job_data['event_title'] = job_data['title']
-
-                # Set guild_id if not in stored data (migration from pre-multi-guild)
                 if 'guild_id' not in job_data:
                     job_data['guild_id'] = guild_id
-
-                # Set group_id if not in stored data (migration from pre-per-guild-group)
                 if not job_data.get('group_id'):
                     job_data['group_id'] = group_id
 
+                status = job_data.get('status', 'pending')
+
+                # Always restore the job data into memory (regardless of status)
+                self.jobs[job_id] = JobData.from_dict(job_data)
+
+                # Terminal jobs: keep in memory but don't schedule
+                if status in TERMINAL_STATUSES:
+                    logger.info(f"Restored terminal job {job_id} (status={status})")
+                    continue
+
+                # Missed jobs from previous run: keep in memory but don't schedule
+                if status == 'missed':
+                    skipped_jobs.append(job_data)
+                    logger.info(f"Restored missed job {job_id}")
+                    continue
+
+                # Active (pending) jobs: check timing
                 effective_group_id = job_data.get('group_id')
 
-                # Add job to scheduler
-                self.scheduler.add_job(
-                    self._post_announcement,
-                    'date',
-                    run_date=run_date,
-                    args=[job_id, job_data['title'], job_data['content'], effective_group_id],
-                    id=job_id
-                )
-
-                self.jobs[job_id] = JobData.from_dict(job_data)
-                restored_count += 1
-                logger.info(f"Restored job {job_id} scheduled for {run_date}")
+                if job_data['timestamp'] <= current_time:
+                    # Past-due: check if within misfire_grace_time
+                    if current_time - job_data['timestamp'] <= self.misfire_grace_time:
+                        # Within grace period: schedule it (APScheduler will fire immediately)
+                        run_date = datetime.fromtimestamp(job_data['timestamp'], tz=pytz.utc)
+                        self.scheduler.add_job(
+                            self._post_announcement,
+                            'date',
+                            run_date=run_date,
+                            args=[job_id, job_data['title'], job_data['content'], effective_group_id],
+                            id=job_id,
+                            misfire_grace_time=self.misfire_grace_time
+                        )
+                        restored_count += 1
+                        logger.info(f"Restored past-due job {job_id} within grace period, will fire immediately")
+                    else:
+                        # Beyond grace period: mark as missed
+                        self.jobs[job_id].status = 'missed'
+                        skipped_jobs.append(job_data)
+                        logger.info(f"Job {job_id} missed (past due beyond grace period)")
+                else:
+                    # Future job: schedule normally
+                    run_date = datetime.fromtimestamp(job_data['timestamp'], tz=pytz.utc)
+                    self.scheduler.add_job(
+                        self._post_announcement,
+                        'date',
+                        run_date=run_date,
+                        args=[job_id, job_data['title'], job_data['content'], effective_group_id],
+                        id=job_id,
+                        misfire_grace_time=self.misfire_grace_time
+                    )
+                    restored_count += 1
+                    logger.info(f"Restored job {job_id} scheduled for {run_date}")
 
             except Exception as e:
                 logger.error(f"Failed to restore job {job_data.get('id')}: {e}")
@@ -162,17 +200,23 @@ class Scheduler:
         return restored_count, skipped_jobs
 
     def get_jobs_data(self, guild_id=None):
-        """Get list of current jobs for persistence, optionally filtered by guild_id"""
+        """Get list of ALL jobs for persistence, optionally filtered by guild_id.
+
+        Includes terminal jobs so their status is preserved across restarts.
+        """
         jobs = self.jobs.values()
         if guild_id is not None:
             jobs = [j for j in jobs if j.guild_id == guild_id]
         return [job.to_dict() for job in jobs]
 
     def list_jobs(self, guild_id=None):
-        """List all active scheduled jobs, optionally filtered by guild_id"""
+        """List active scheduled jobs (pending status, still in APScheduler).
+
+        Used for /list command and for rebuilding queued_announcements on restore.
+        """
         active_jobs = []
         for job in self.jobs.values():
-            if self.scheduler.get_job(job.id) is not None:
+            if job.status == 'pending' and self.scheduler.get_job(job.id) is not None:
                 if guild_id is None or job.guild_id == guild_id:
                     active_jobs.append(job)
         return active_jobs
@@ -181,14 +225,35 @@ class Scheduler:
         """Get a job by its ID, or None if not found"""
         return self.jobs.get(job_id)
 
+    def get_job_by_message_id(self, message_id):
+        """Get a job by message ID (any status). Returns None if not found."""
+        for job in self.jobs.values():
+            if job.message_id == message_id:
+                return job
+        return None
+
+    def unschedule_job(self, job_id):
+        """Remove a job from APScheduler without changing the job's status in self.jobs.
+
+        Safe to call even if the job is not in APScheduler (e.g., missed jobs).
+        """
+        try:
+            if self.scheduler.get_job(job_id) is not None:
+                self.scheduler.remove_job(job_id)
+        except Exception as e:
+            logger.error(f"Error unscheduling job {job_id}: {e}")
+
     def cancel_job(self, job_id):
-        """Cancel a scheduled job"""
+        """Cancel a scheduled job by setting its status to 'cancelled'.
+
+        Removes from APScheduler if present but keeps the job in self.jobs.
+        """
         if job_id not in self.jobs:
             return False
 
         try:
-            self.scheduler.remove_job(job_id)
-            del self.jobs[job_id]
+            self.unschedule_job(job_id)
+            self.jobs[job_id].status = 'cancelled'
             return True
         except Exception as e:
             logger.error(Messages.Log.JOB_CANCEL_ERROR.format(job_id, e))
@@ -201,13 +266,18 @@ class Scheduler:
                 return self.cancel_job(job_id)
         return False
 
-    def get_job_by_message_id(self, message_id):
-        """Get a scheduled job by message ID"""
-        for job in self.jobs.values():
-            if job.message_id == message_id:
-                return job
-        return None
-    
+    def mark_job_success(self, job_id):
+        """Mark a job as successfully completed (for immediate posting)."""
+        if job_id in self.jobs:
+            self.unschedule_job(job_id)
+            self.jobs[job_id].status = 'success'
+
+    def mark_job_failed(self, job_id):
+        """Mark a job as failed."""
+        if job_id in self.jobs:
+            self.unschedule_job(job_id)
+            self.jobs[job_id].status = 'failed'
+
     def shutdown(self):
         """Shutdown the scheduler"""
         self.scheduler.shutdown()

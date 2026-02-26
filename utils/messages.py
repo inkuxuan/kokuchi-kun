@@ -117,6 +117,7 @@ class Messages:
         INVALID_CHANNELS_WARNING = "⚠️ The following configured channel IDs could not be found:\n{}\nPlease check your config.yaml."
         RESTORATION_STATS = "{} pending, {} booked announcements restored"
         SKIPPED_JOBS = "⚠️ Skipped {} announcements that were scheduled while offline:\n{}"
+        MISSED_REACTIONS_WARNING = "⚠️ オフライン中に {} のリアクションが検出されました。Botがオフラインだったため処理されていません。再度リアクションし直してください。"
 
         # Calendar
         CALENDAR_MISSING_TIME = "エラー：イベントの開始時刻または終了時刻が見つかりません。"

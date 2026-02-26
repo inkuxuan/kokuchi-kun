@@ -122,7 +122,7 @@ class AnnouncementCog(commands.Cog):
             group_id=self._get_group_id(guild_id),
         )
 
-        # Rebuild queued_announcements from restored jobs
+        # Rebuild queued_announcements from restored active jobs
         state.queued_announcements = set()
         for job in self.scheduler.list_jobs(guild_id=guild_id):
             if job.message_id:
@@ -188,6 +188,67 @@ class AnnouncementCog(commands.Cog):
             if request_id in self.otp_requests:
                 del self.otp_requests[request_id]
 
+    # --- Missed reaction warning ---
+
+    async def _warn_missed_reactions(self, guild_id, channel_ids):
+        """Warn about reactions that may have been added while the bot was offline.
+
+        Rather than automatically acting on missed reactions (which could be
+        surprising), we reply to the original request message so the user knows
+        they need to re-react now that the bot is back online.
+        """
+        state = self._get_state(guild_id)
+
+        # Only check non-terminal jobs that have a bot reply
+        actionable_jobs = [
+            j for j in self.scheduler.jobs.values()
+            if j.guild_id == guild_id and j.status not in ('success', 'cancelled')
+        ]
+
+        for job in actionable_jobs:
+            bot_reply_id = state.get_bot_reply_id(job.message_id)
+            if not bot_reply_id:
+                continue
+
+            # Try to find and fetch the bot reply message
+            bot_reply_msg = None
+            for cid in channel_ids:
+                channel = self.bot.get_channel(int(cid))
+                if not channel:
+                    continue
+                try:
+                    bot_reply_msg = await channel.fetch_message(int(bot_reply_id))
+                    break
+                except discord.NotFound:
+                    continue
+                except Exception:
+                    continue
+
+            if not bot_reply_msg:
+                continue
+
+            # Check if any non-bot user reacted with ⏩ or 📅 while offline
+            missed_emojis = []
+            for reaction in bot_reply_msg.reactions:
+                emoji_str = str(reaction.emoji)
+                if emoji_str == self.fast_forward_emoji:
+                    if reaction.count > 1 or (reaction.count == 1 and not reaction.me):
+                        missed_emojis.append(self.fast_forward_emoji)
+                elif emoji_str == self.calendar_emoji:
+                    if reaction.count > 1 or (reaction.count == 1 and not reaction.me):
+                        if not state.has_calendar_event(job.message_id):
+                            missed_emojis.append(self.calendar_emoji)
+
+            if missed_emojis:
+                emoji_list = " ".join(missed_emojis)
+                try:
+                    request_msg = await bot_reply_msg.channel.fetch_message(int(job.message_id))
+                    await request_msg.reply(
+                        Messages.Discord.MISSED_REACTIONS_WARNING.format(emoji_list)
+                    )
+                except Exception as e:
+                    logger.error(f"Error warning about missed reactions for job {job.id}: {e}")
+
     # --- Message listener ---
 
     @commands.Cog.listener()
@@ -216,7 +277,10 @@ class AnnouncementCog(commands.Cog):
                 # Load state for this guild
                 restored_jobs, pending_count, skipped_jobs = await self.load_state(gid)
 
-                # Immediately save state to clean up any skipped jobs
+                # Warn about reactions that may have been added while offline
+                await self._warn_missed_reactions(gid, channel_ids)
+
+                # Save state (persists missed-job status updates and any processed reactions)
                 await self.save_state(gid)
 
                 # Send restoration message to first channel
@@ -346,6 +410,11 @@ class AnnouncementCog(commands.Cog):
         if not request_msg_id:
             return
 
+        # Guard: allow fast-forward for active, missed, or failed jobs (retry)
+        job = self.scheduler.get_job_by_message_id(request_msg_id)
+        if not job or job.status not in ('pending', 'missed', 'failed'):
+            return
+
         try:
             request_message = await channel.fetch_message(int(request_msg_id))
             member = await self._fetch_member_safe(channel, payload.user_id)
@@ -365,6 +434,13 @@ class AnnouncementCog(commands.Cog):
 
         # Check if event already exists
         if state.has_calendar_event(request_msg_id):
+            return
+
+        # Guard: allow calendar creation for any non-cancelled job.
+        # Calendar events are independent of announcement posting status — even
+        # failed or missed announcements may need a calendar entry.
+        job = self.scheduler.get_job_by_message_id(request_msg_id)
+        if not job or job.status == 'cancelled':
             return
 
         try:
@@ -449,7 +525,7 @@ class AnnouncementCog(commands.Cog):
         if approval_reactions and approval_reactions[0].count > 0:
             return
 
-        # Cancel the job and delete the scheduled message
+        # Cancel the job (sets status to 'cancelled', keeps in memory)
         if not self.scheduler.cancel_job_by_message_id(msg_id):
             return
 
@@ -462,7 +538,7 @@ class AnnouncementCog(commands.Cog):
             except Exception as e:
                 logger.error(Messages.Log.SCHEDULED_MSG_DELETE_ERROR.format(e))
 
-        # Also delete calendar event if exists
+        # Cancel in state (sets pending to None, calendar to None)
         calendar_event_id = state.cancel(msg_id)
         if calendar_event_id:
             group_id = self._get_group_id(guild_id)
@@ -495,6 +571,11 @@ class AnnouncementCog(commands.Cog):
             job = self.scheduler.get_job_by_message_id(str(message.id))
             if not job:
                 logger.warning(Messages.Log.CALENDAR_EVENT_CREATE_WARNING.format(message.id))
+                return
+
+            # Guard: allow calendar creation for any non-cancelled job.
+            # Calendar events are independent of posting status.
+            if job.status == 'cancelled':
                 return
 
             # Retrieve event details from job
@@ -532,10 +613,10 @@ class AnnouncementCog(commands.Cog):
             await channel.send(Messages.Discord.ERROR_OCCURRED.format(str(e)))
 
     async def _process_immediate_post(self, request_msg_id, channel_id, processing_msg_id, guild_id):
-        """Process an immediate post request"""
-        # Get job details
+        """Process an immediate post request (fast-forward)"""
+        # Get job details — allow reposting for pending, missed, or failed jobs
         job = self.scheduler.get_job_by_message_id(request_msg_id)
-        if not job:
+        if not job or job.status not in ('pending', 'missed', 'failed'):
             return
 
         channel = self.bot.get_channel(channel_id)
@@ -544,8 +625,8 @@ class AnnouncementCog(commands.Cog):
 
         processing_msg = await channel.fetch_message(processing_msg_id)
 
-        # Cancel the scheduled job
-        self.scheduler.cancel_job(job.id)
+        # Remove from APScheduler if present (no-op for missed jobs)
+        self.scheduler.unschedule_job(job.id)
 
         # Post immediately
         try:
@@ -553,6 +634,9 @@ class AnnouncementCog(commands.Cog):
             result = await self.vrchat_api.post_announcement(group_id, job.title, job.content)
 
             if result.success:
+                # Mark the job as successfully completed
+                self.scheduler.mark_job_success(job.id)
+
                 # Update embed to show success
                 embed = processing_msg.embeds[0]
                 embed.color = discord.Color.gold()
@@ -564,24 +648,24 @@ class AnnouncementCog(commands.Cog):
                 # Mark completed in state
                 state = self._get_state(guild_id)
                 state.mark_completed(str(request_msg_id))
-                # Keep pending_requests entry as it maps to the processing msg which still exists
-                state.pending_requests[str(request_msg_id)] = str(processing_msg_id)
 
                 await self.save_state(guild_id)
             else:
-                # Save state even on failure - the job was already cancelled
+                # Mark the job as failed
+                self.scheduler.mark_job_failed(job.id)
                 await self.save_state(guild_id)
                 await channel.send(Messages.Discord.IMMEDIATE_POST_FAIL.format(result.error))
 
         except Exception as e:
             logger.error(f"Error in immediate post: {e}")
-            # Save state even on exception - the job was already cancelled
+            # Mark job as failed so it's not silently lost
+            self.scheduler.mark_job_failed(job.id)
             await self.save_state(guild_id)
             await channel.send(Messages.Discord.IMMEDIATE_POST_FAIL.format(str(e)))
 
     def _is_timestamp_too_old(self, timestamp) -> bool:
-        """Check if a timestamp is more than 1 hour in the past."""
-        return timestamp < time.time() - 3600
+        """Check if a timestamp is more than misfire_grace_time seconds in the past."""
+        return timestamp < time.time() - self.scheduler.misfire_grace_time
 
     def _build_booking_embed(self, result, job_id) -> discord.Embed:
         """Build the confirmation embed for a booked announcement."""
