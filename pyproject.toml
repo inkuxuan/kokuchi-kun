@@ -9,7 +9,7 @@ version = "3.0.1"
 description = "Discord bot to schedule VRChat group announcements"
 readme = "README.md"
 requires-python = ">=3.12"
-license = {text = "MIT"}
+license = {file = "LICENSE"}
 authors = [
     {name = "inkutech", email = "mail@inkutech.jp"}
 ]
