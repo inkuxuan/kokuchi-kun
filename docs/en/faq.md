@@ -24,9 +24,15 @@ The 👀 means the bot received your request. The next step requires **admin app
 
 **Q: I submitted the wrong date, time, or content**
 
-If the announcement has **not yet been approved** (no 👍): delete your original message and resubmit.
+If the announcement has **not yet been approved** (no 👍): simply edit your original message before an admin approves it.
 
-If it has **already been approved and scheduled**: ask an admin to remove the 👍 or run `!cancel <job_id>`, then resubmit.
+If it has **already been approved and scheduled**:
+
+1. Ask an admin to remove the 👍 (or run `/cancel <job_id>`) to cancel the booking
+2. Edit your original message in Discord to fix the mistake
+3. Have an admin add 👍 again to re-approve
+
+The bot will re-process the edited message and create a fresh booking. You don't need to delete and resubmit — just cancel, edit, and re-approve. See [Editing and Re-approving](./features#editing-and-re-approving) for details.
 
 ---
 

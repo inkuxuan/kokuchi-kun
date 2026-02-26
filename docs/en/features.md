@@ -92,6 +92,20 @@ React with 📅 on the booking confirmation embed to create a VRChat group calen
 Calendar event creation requires both a start time and end time in your original request. Removing the 📅 reaction will also delete the calendar event.
 :::
 
+## Editing and Re-approving
+
+If you notice an error in the announcement after it has been approved (wrong date, time, content, etc.), you can fix it without resubmitting:
+
+1. **Cancel** the current booking (see below)
+2. **Edit** the original request message in Discord to correct the mistake
+3. Have an admin **add 👍 again** to re-approve
+
+The bot will re-process the edited message with AI, schedule a new booking, and display a fresh confirmation embed. The re-approved announcement works exactly like a new one — you can use ⏩, 📅, or cancel it again.
+
+::: tip
+This is the recommended way to fix mistakes. You don't need to delete and resubmit — just cancel, edit, and re-approve.
+:::
+
 ## Cancellation
 
 To cancel a scheduled announcement, use any of these methods:

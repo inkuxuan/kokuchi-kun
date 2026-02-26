@@ -54,9 +54,13 @@ class AnnouncementCog(commands.Cog):
 
             # Save state for both success and failure
             await gctx.save_state()
-            logger.info(f"Job {status} and state saved: {message_id}")
+            guild = self.bot.get_guild(int(guild_id)) if guild_id else None
+            logger.info(
+                f"Job completion callback: status={status}, message_id={message_id}, "
+                f"guild={self._guild_log(guild)}"
+            )
         except Exception as e:
-            logger.error(f"Error in job completion callback: {e}")
+            logger.error(f"Error in job completion callback: {e}", exc_info=True)
 
     # --- Missed reaction warning ---
 
@@ -111,13 +115,20 @@ class AnnouncementCog(commands.Cog):
 
             if missed_emojis:
                 emoji_list = " ".join(missed_emojis)
+                logger.info(
+                    f"Detected missed reactions {emoji_list} on job {job.id} (msg {job.message_id}, "
+                    f"guild={self._guild_log(bot_reply_msg.guild)}, channel={self._channel_log(bot_reply_msg.channel)})"
+                )
                 try:
                     request_msg = await bot_reply_msg.channel.fetch_message(int(job.message_id))
                     await request_msg.reply(
                         Messages.Discord.MISSED_REACTIONS_WARNING.format(emoji_list)
                     )
                 except Exception as e:
-                    logger.error(f"Error warning about missed reactions for job {job.id}: {e}")
+                    logger.error(
+                        f"Error warning about missed reactions for job {job.id} "
+                        f"(guild={self._guild_log(bot_reply_msg.guild)}, channel={self._channel_log(bot_reply_msg.channel)}): {e}"
+                    )
 
     # --- Message listener ---
 
@@ -166,7 +177,7 @@ class AnnouncementCog(commands.Cog):
                         await channel.send(skipped_msg)
 
         except Exception as e:
-            logger.error(f"Error during announcement cog initialization: {e}")
+            logger.error(f"Error during announcement cog initialization: {e}", exc_info=True)
 
     @commands.Cog.listener()
     async def on_message(self, message):
@@ -190,6 +201,10 @@ class AnnouncementCog(commands.Cog):
         if self.bot.user.mentioned_in(message):
             # Check if guild is enabled for new requests
             if not gctx.enabled:
+                logger.info(
+                    f"Request rejected: guild is disabled "
+                    f"(guild={self._guild_log(message.guild)}, channel={self._channel_log(message.channel)})"
+                )
                 await message.reply(Messages.Discord.GUILD_DISABLED)
                 return
             await self._handle_announcement_request(message, gctx)
@@ -201,6 +216,12 @@ class AnnouncementCog(commands.Cog):
 
             # Check if this message has already been queued or sent
             if gctx.state.is_queued(msg_id) or gctx.state.is_in_history(msg_id):
+                logger.info(
+                    f"Request {msg_id} rejected: already booked "
+                    f"(queued={gctx.state.is_queued(msg_id)}, history={gctx.state.is_in_history(msg_id)}, "
+                    f"guild={self._guild_log(message.guild)}, channel={self._channel_log(message.channel)}, "
+                    f"author={self._user_log(message.author)})"
+                )
                 await message.reply(Messages.Discord.ALREADY_BOOKED)
                 return
 
@@ -209,9 +230,14 @@ class AnnouncementCog(commands.Cog):
             await gctx.save_state()
             await message.add_reaction(self.seen_emoji)
             await message.reply(Messages.Discord.REQUEST_CONFIRMED)
+            logger.info(
+                f"New announcement request registered: msg_id={msg_id}, "
+                f"guild={self._guild_log(message.guild)}, channel={self._channel_log(message.channel)}, "
+                f"author={self._user_log(message.author)}"
+            )
 
         except Exception as e:
-            logger.error(Messages.Log.ANNOUNCEMENT_REQUEST_ERROR.format(e))
+            logger.error(Messages.Log.ANNOUNCEMENT_REQUEST_ERROR.format(e), exc_info=True)
             await message.reply(Messages.Discord.ERROR_OCCURRED.format(str(e)))
 
     # --- Dispatchers ---
@@ -237,6 +263,7 @@ class AnnouncementCog(commands.Cog):
 
         channel = self.bot.get_channel(payload.channel_id)
         if not channel:
+            logger.warning(f"Reaction ignored: channel {payload.channel_id} not in bot cache")
             return
 
         # Determine guild_id for state lookup
@@ -246,15 +273,51 @@ class AnnouncementCog(commands.Cog):
         emoji = str(payload.emoji)
         msg_id = str(payload.message_id)
 
+        logger.info(
+            f"Reaction add: emoji={emoji!r} msg={msg_id} "
+            f"user={self._user_id_log(payload.user_id)} "
+            f"guild={self._guild_log(channel.guild)} channel={self._channel_log(channel)}"
+        )
+
         # Case 1: Approval of pending request (Reaction to User's message)
         if emoji == self.approval_emoji and gctx.state.is_pending(msg_id):
             member = await self._fetch_member_safe(channel, payload.user_id)
             if not self._is_admin(member, gctx.admin_role_id):
+                logger.info(
+                    f"Approval ignored: user {self._user_log(member)} is not admin "
+                    f"(role_id={gctx.admin_role_id}, guild={self._guild_log(channel.guild)}, channel={self._channel_log(channel)})"
+                )
                 return
 
-            if gctx.state.is_queued(msg_id) or gctx.state.is_in_history(msg_id):
+            if gctx.state.is_in_history(msg_id):
+                logger.info(
+                    f"Approval ignored: msg {msg_id} is in history (already completed, "
+                    f"guild={self._guild_log(channel.guild)}, channel={self._channel_log(channel)})"
+                )
                 return
 
+            # Check queued status, but verify against actual job state to handle
+            # stale queued_announcements (e.g. after !cancel + restart)
+            if gctx.state.is_queued(msg_id):
+                job = self.state_manager.scheduler.get_job_by_message_id(msg_id)
+                if job and job.status not in ('cancelled', 'success', 'failed'):
+                    logger.info(
+                        f"Approval ignored: msg {msg_id} has active job {job.id} (status={job.status}, "
+                        f"guild={self._guild_log(channel.guild)}, channel={self._channel_log(channel)})"
+                    )
+                    return
+                # Job is terminal or missing — stale queued flag, clear it and re-approve
+                logger.info(
+                    f"Approval: clearing stale queued flag for msg {msg_id} "
+                    f"(job={'None' if not job else job.status}, "
+                    f"guild={self._guild_log(channel.guild)}, channel={self._channel_log(channel)})"
+                )
+                gctx.state.queued_announcements.discard(msg_id)
+
+            logger.info(
+                f"Approval accepted: processing msg {msg_id} by admin {self._user_log(member)} "
+                f"(guild={self._guild_log(channel.guild)}, channel={self._channel_log(channel)})"
+            )
             message = await channel.fetch_message(payload.message_id)
             if message:
                 await self._process_approved_announcement(message, gctx)
@@ -264,41 +327,132 @@ class AnnouncementCog(commands.Cog):
         if emoji == self.fast_forward_emoji:
             request_msg_id = gctx.state.find_request_id_by_bot_message(msg_id)
             if not request_msg_id:
+                logger.info(
+                    f"Fast-forward ignored: no request found for bot msg {msg_id} "
+                    f"(guild={self._guild_log(channel.guild)}, channel={self._channel_log(channel)})"
+                )
                 return
 
             job = self.state_manager.scheduler.get_job_by_message_id(request_msg_id)
-            if not job or job.status not in ('pending', 'missed', 'failed'):
+            if not job:
+                logger.info(
+                    f"Fast-forward blocked: no job found for msg {request_msg_id} "
+                    f"(guild={self._guild_log(channel.guild)}, channel={self._channel_log(channel)})"
+                )
+                return
+            if job.status not in ('pending', 'missed', 'failed'):
+                logger.info(
+                    f"Fast-forward blocked: job {job.id} has status={job.status} "
+                    f"(guild={self._guild_log(channel.guild)}, channel={self._channel_log(channel)})"
+                )
                 return
 
             try:
                 request_message = await channel.fetch_message(int(request_msg_id))
                 member = await self._fetch_member_safe(channel, payload.user_id)
-                if self._is_admin(member, gctx.admin_role_id) or request_message.author.id == payload.user_id:
+                is_admin = self._is_admin(member, gctx.admin_role_id)
+                is_author = request_message.author.id == payload.user_id
+                if is_admin or is_author:
+                    logger.info(
+                        f"Fast-forward authorized: job {job.id} by user {self._user_log(member)} "
+                        f"(admin={is_admin}, author={is_author}, "
+                        f"guild={self._guild_log(channel.guild)}, channel={self._channel_log(channel)})"
+                    )
                     await self._process_immediate_post(request_msg_id, payload.channel_id, payload.message_id, gctx)
+                else:
+                    logger.info(
+                        f"Fast-forward denied: user {self._user_log(member)} "
+                        f"(admin={is_admin}, author={is_author}, msg_author={self._user_log(request_message.author)}, "
+                        f"guild={self._guild_log(channel.guild)}, channel={self._channel_log(channel)})"
+                    )
             except Exception as e:
-                logger.error(f"Error handling immediate post request: {e}")
+                logger.error(
+                    f"Error handling fast-forward for job {job.id} "
+                    f"(guild={self._guild_log(channel.guild)}, channel={self._channel_log(channel)}): {e}",
+                    exc_info=True
+                )
             return
 
         # Case 3: Create Calendar Event (Reaction to Bot's message)
         if emoji == self.calendar_emoji:
             request_msg_id = gctx.state.find_request_id_by_bot_message(msg_id)
             if not request_msg_id:
+                logger.info(
+                    f"Calendar ignored: no request found for bot msg {msg_id} "
+                    f"(guild={self._guild_log(channel.guild)}, channel={self._channel_log(channel)})"
+                )
                 return
 
             if gctx.state.has_calendar_event(request_msg_id):
+                logger.info(
+                    f"Calendar ignored: event already exists for msg {request_msg_id} "
+                    f"(guild={self._guild_log(channel.guild)}, channel={self._channel_log(channel)})"
+                )
                 return
 
             job = self.state_manager.scheduler.get_job_by_message_id(request_msg_id)
-            if not job or job.status == 'cancelled':
+            if not job:
+                logger.info(
+                    f"Calendar blocked: no job found for msg {request_msg_id} "
+                    f"(guild={self._guild_log(channel.guild)}, channel={self._channel_log(channel)})"
+                )
+                return
+            if job.status == 'cancelled':
+                logger.info(
+                    f"Calendar blocked: job {job.id} is cancelled "
+                    f"(guild={self._guild_log(channel.guild)}, channel={self._channel_log(channel)})"
+                )
                 return
 
             try:
                 request_message = await channel.fetch_message(int(request_msg_id))
                 member = await self._fetch_member_safe(channel, payload.user_id)
-                if self._is_admin(member, gctx.admin_role_id) or request_message.author.id == payload.user_id:
+                is_admin = self._is_admin(member, gctx.admin_role_id)
+                is_author = request_message.author.id == payload.user_id
+                if is_admin or is_author:
+                    logger.info(
+                        f"Calendar authorized: job {job.id} by user {self._user_log(member)} "
+                        f"(admin={is_admin}, author={is_author}, "
+                        f"guild={self._guild_log(channel.guild)}, channel={self._channel_log(channel)})"
+                    )
                     await self._process_calendar_event_creation(request_message, channel, gctx)
+                else:
+                    logger.info(
+                        f"Calendar denied: user {self._user_log(member)} "
+                        f"(admin={is_admin}, author={is_author}, msg_author={self._user_log(request_message.author)}, "
+                        f"guild={self._guild_log(channel.guild)}, channel={self._channel_log(channel)})"
+                    )
             except Exception as e:
-                logger.error(f"Error handling calendar event creation: {e}")
+                logger.error(
+                    f"Error handling calendar creation for job {job.id} "
+                    f"(guild={self._guild_log(channel.guild)}, channel={self._channel_log(channel)}): {e}",
+                    exc_info=True
+                )
+
+    @commands.Cog.listener()
+    async def on_raw_message_delete(self, payload):
+        """Dispatcher: cancel a scheduled announcement when its request message is deleted."""
+        if payload.guild_id is None:
+            return
+
+        if str(payload.channel_id) not in self._all_channel_ids:
+            return
+
+        msg_id = str(payload.message_id)
+        guild_id = str(payload.guild_id)
+        gctx = self.state_manager.get_guild_context(guild_id)
+
+        channel = self.bot.get_channel(payload.channel_id)
+        if not channel:
+            logger.warning(f"Message delete ignored: channel {payload.channel_id} not in bot cache")
+            return
+
+        if gctx.state.is_queued(msg_id):
+            logger.info(
+                f"Queued announcement {msg_id} cancelled due to message deletion "
+                f"(guild={self._guild_log(channel.guild)}, channel={self._channel_log(channel)})"
+            )
+            await self._cancel_announcement_on_delete(msg_id, channel, gctx)
 
     @commands.Cog.listener()
     async def on_raw_reaction_remove(self, payload):
@@ -321,6 +475,7 @@ class AnnouncementCog(commands.Cog):
 
         channel = self.bot.get_channel(payload.channel_id)
         if not channel:
+            logger.warning(f"Reaction remove ignored: channel {payload.channel_id} not in bot cache")
             return
 
         guild_id = str(payload.guild_id)
@@ -328,21 +483,47 @@ class AnnouncementCog(commands.Cog):
         emoji = str(payload.emoji)
         msg_id = str(payload.message_id)
 
+        logger.info(
+            f"Reaction remove: emoji={emoji!r} msg={msg_id} "
+            f"user={self._user_id_log(payload.user_id)} "
+            f"guild={self._guild_log(channel.guild)} channel={self._channel_log(channel)}"
+        )
+
         # Case: Removal of Calendar reaction
         if emoji == self.calendar_emoji:
             request_msg_id = gctx.state.find_request_id_by_bot_message(msg_id)
             if not request_msg_id or not gctx.state.has_calendar_event(request_msg_id):
+                logger.info(
+                    f"Calendar remove ignored: no request or no calendar event "
+                    f"(request_msg_id={request_msg_id}, "
+                    f"guild={self._guild_log(channel.guild)}, channel={self._channel_log(channel)})"
+                )
                 return
 
             try:
                 member = await channel.guild.fetch_member(payload.user_id)
                 request_message = await channel.fetch_message(int(request_msg_id))
-                if not (self._is_admin(member, gctx.admin_role_id) or request_message.author.id == payload.user_id):
+                is_admin = self._is_admin(member, gctx.admin_role_id)
+                is_author = request_message.author.id == payload.user_id
+                if not (is_admin or is_author):
+                    logger.info(
+                        f"Calendar remove denied: user {self._user_log(member)} "
+                        f"(admin={is_admin}, author={is_author}, "
+                        f"guild={self._guild_log(channel.guild)}, channel={self._channel_log(channel)})"
+                    )
                     return
 
+                logger.info(
+                    f"Calendar remove authorized: msg {request_msg_id} by user {self._user_log(member)} "
+                    f"(guild={self._guild_log(channel.guild)}, channel={self._channel_log(channel)})"
+                )
                 await self._remove_calendar_event(request_msg_id, channel, gctx)
             except Exception as e:
-                logger.error(Messages.Log.CALENDAR_EVENT_DELETE_ERROR.format(e))
+                logger.error(
+                    f"Error removing calendar event for msg {request_msg_id} "
+                    f"(guild={self._guild_log(channel.guild)}, channel={self._channel_log(channel)}): {e}",
+                    exc_info=True
+                )
 
         # Case: Removal of Approval reaction (on User's message)
         elif emoji == self.approval_emoji:
@@ -356,9 +537,46 @@ class AnnouncementCog(commands.Cog):
             # Check if there are any approval reactions left
             approval_reactions = [r for r in message.reactions if str(r.emoji) == self.approval_emoji]
             if approval_reactions and approval_reactions[0].count > 0:
+                logger.info(
+                    f"Approval remove: still {approval_reactions[0].count} approval reaction(s) on msg {msg_id}, no action "
+                    f"(guild={self._guild_log(channel.guild)}, channel={self._channel_log(channel)})"
+                )
                 return
 
+            logger.info(
+                f"All approval reactions removed from msg {msg_id}, cancelling announcement "
+                f"(guild={self._guild_log(channel.guild)}, channel={self._channel_log(channel)})"
+            )
             await self._cancel_approved_announcement(msg_id, message, channel, gctx)
+
+    # --- Log formatting helpers ---
+
+    def _guild_log(self, guild) -> str:
+        """Format guild for logging: 'id/name'."""
+        if guild is None:
+            return "unknown"
+        return f"{guild.id}/{guild.name!r}"
+
+    def _channel_log(self, channel) -> str:
+        """Format channel for logging: 'id/#name'."""
+        if channel is None:
+            return "unknown"
+        return f"{channel.id}/#{channel.name}"
+
+    def _user_log(self, user_or_member) -> str:
+        """Format a User or Member for logging: 'id/name'."""
+        if user_or_member is None:
+            return "unknown"
+        return f"{user_or_member.id}/{user_or_member.name!r}"
+
+    def _user_id_log(self, user_id) -> str:
+        """Format a user ID for logging, resolving the name from cache when available."""
+        if user_id is None:
+            return "unknown"
+        user = self.bot.get_user(int(user_id))
+        if user:
+            return f"{user_id}/{user.name!r}"
+        return str(user_id)
 
     # --- Permission helpers ---
 
@@ -366,7 +584,11 @@ class AnnouncementCog(commands.Cog):
         """Fetch a guild member, returning None on failure."""
         try:
             return await channel.guild.fetch_member(user_id)
-        except Exception:
+        except Exception as e:
+            logger.warning(
+                f"Failed to fetch member {user_id} "
+                f"(guild={self._guild_log(channel.guild)}): {e}"
+            )
             return None
 
     def _is_admin(self, member, admin_role_id) -> bool:
@@ -380,12 +602,57 @@ class AnnouncementCog(commands.Cog):
     async def _remove_calendar_event(self, request_msg_id, channel, gctx):
         """Remove a VRChat calendar event and persist the state change."""
         calendar_event_id = gctx.state.remove_calendar_event(request_msg_id)
+        logger.info(
+            f"Deleting calendar event {calendar_event_id} for msg {request_msg_id} "
+            f"(guild={self._guild_log(channel.guild)}, channel={self._channel_log(channel)})"
+        )
         result = await self.vrchat_api.delete_group_calendar_event(gctx.group_id, calendar_event_id)
         await gctx.save_state()
         if result.success:
+            logger.info(
+                f"Calendar event {calendar_event_id} deleted successfully "
+                f"(guild={self._guild_log(channel.guild)}, channel={self._channel_log(channel)})"
+            )
             await channel.send(Messages.Discord.CALENDAR_DELETED)
         else:
+            logger.error(
+                f"Calendar event deletion failed "
+                f"(guild={self._guild_log(channel.guild)}, channel={self._channel_log(channel)}): {result.error}"
+            )
             await channel.send(result.error)
+
+    async def _cancel_announcement_on_delete(self, msg_id, channel, gctx):
+        """Cancel an approved announcement when its original request message was deleted."""
+        bot_reply_id = gctx.state.get_bot_reply_id(msg_id)
+        if bot_reply_id:
+            try:
+                scheduled_msg = await channel.fetch_message(bot_reply_id)
+                if scheduled_msg:
+                    await scheduled_msg.delete()
+                    logger.info(
+                        f"Deleted bot reply message {bot_reply_id} for cancelled announcement {msg_id} "
+                        f"(guild={self._guild_log(channel.guild)}, channel={self._channel_log(channel)})"
+                    )
+            except Exception as e:
+                logger.error(Messages.Log.SCHEDULED_MSG_DELETE_ERROR.format(e))
+
+        success, deleted_calendar = await gctx.cancel_announcement_detailed(msg_id)
+        if not success:
+            logger.warning(
+                f"Cancel failed for msg {msg_id}: job not found in scheduler "
+                f"(guild={self._guild_log(channel.guild)}, channel={self._channel_log(channel)})"
+            )
+            return
+
+        logger.info(
+            f"Announcement cancelled (message deleted): msg={msg_id}, calendar_deleted={deleted_calendar} "
+            f"(guild={self._guild_log(channel.guild)}, channel={self._channel_log(channel)})"
+        )
+
+        if deleted_calendar:
+            await channel.send(Messages.Discord.CALENDAR_DELETED_WITH_CANCEL)
+
+        await channel.send(Messages.Discord.BOOKING_CANCELLED)
 
     async def _cancel_approved_announcement(self, msg_id, message, channel, gctx):
         """Cancel an approved announcement: delete bot reply, cancel job, notify."""
@@ -396,13 +663,26 @@ class AnnouncementCog(commands.Cog):
                 scheduled_msg = await channel.fetch_message(bot_reply_id)
                 if scheduled_msg:
                     await scheduled_msg.delete()
+                    logger.info(
+                        f"Deleted bot reply message {bot_reply_id} for cancelled announcement {msg_id} "
+                        f"(guild={self._guild_log(channel.guild)}, channel={self._channel_log(channel)})"
+                    )
             except Exception as e:
                 logger.error(Messages.Log.SCHEDULED_MSG_DELETE_ERROR.format(e))
 
         # Cancel via GuildContext (scheduler + state + calendar + persist)
         success, deleted_calendar = await gctx.cancel_announcement_detailed(msg_id)
         if not success:
+            logger.warning(
+                f"Cancel failed for msg {msg_id}: job not found in scheduler "
+                f"(guild={self._guild_log(channel.guild)}, channel={self._channel_log(channel)})"
+            )
             return
+
+        logger.info(
+            f"Announcement cancelled: msg={msg_id}, calendar_deleted={deleted_calendar} "
+            f"(guild={self._guild_log(channel.guild)}, channel={self._channel_log(channel)})"
+        )
 
         if deleted_calendar:
             await channel.send(Messages.Discord.CALENDAR_DELETED_WITH_CANCEL)
@@ -414,12 +694,19 @@ class AnnouncementCog(commands.Cog):
         try:
             job = self.state_manager.scheduler.get_job_by_message_id(str(message.id))
             if not job:
-                logger.warning(Messages.Log.CALENDAR_EVENT_CREATE_WARNING.format(message.id))
+                logger.warning(
+                    Messages.Log.CALENDAR_EVENT_CREATE_WARNING.format(message.id) +
+                    f" (guild={self._guild_log(message.guild)}, channel={self._channel_log(message.channel)})"
+                )
                 return
 
             # Guard: allow calendar creation for any non-cancelled job.
             # Calendar events are independent of posting status.
             if job.status == 'cancelled':
+                logger.info(
+                    f"Calendar creation skipped: job {job.id} is cancelled "
+                    f"(guild={self._guild_log(message.guild)}, channel={self._channel_log(message.channel)})"
+                )
                 return
 
             # Retrieve event details from job
@@ -429,10 +716,18 @@ class AnnouncementCog(commands.Cog):
             end_at = job.event_end_timestamp
 
             if not start_at or not end_at:
+                logger.info(
+                    f"Calendar creation skipped: missing time (start={start_at}, end={end_at}) for job {job.id} "
+                    f"(guild={self._guild_log(message.guild)}, channel={self._channel_log(message.channel)})"
+                )
                 await channel.send(Messages.Discord.CALENDAR_MISSING_TIME)
                 return
 
             # Call VRChat API
+            logger.info(
+                f"Creating calendar event: title={title!r}, start={start_at}, end={end_at}, group={gctx.group_id} "
+                f"(guild={self._guild_log(message.guild)}, channel={self._channel_log(message.channel)})"
+            )
             result = await self.vrchat_api.create_group_calendar_event(gctx.group_id, title, content, start_at, end_at)
 
             if result.success:
@@ -444,14 +739,25 @@ class AnnouncementCog(commands.Cog):
 
                 # Send success message
                 calendar_url = f"https://vrchat.com/home/group/{gctx.group_id}/calendar/{calendar_id}"
+                logger.info(
+                    f"Calendar event created: {calendar_id} for msg {message.id} "
+                    f"(guild={self._guild_log(message.guild)}, channel={self._channel_log(message.channel)})"
+                )
                 await channel.send(Messages.Discord.CALENDAR_CREATED.format(calendar_url))
             else:
                 error_msg = result.error or 'Unknown error'
+                logger.error(
+                    f"Calendar event creation failed "
+                    f"(guild={self._guild_log(message.guild)}, channel={self._channel_log(message.channel)}): {error_msg}"
+                )
                 await channel.send(Messages.Discord.CALENDAR_CREATE_FAIL.format(error_msg))
-                logger.error(Messages.Log.CALENDAR_EVENT_CREATE_FAIL.format(error_msg))
 
         except Exception as e:
-            logger.error(Messages.Log.CALENDAR_EVENT_CREATE_EXCEPTION.format(e))
+            logger.error(
+                f"Exception creating calendar event for msg {message.id} "
+                f"(guild={self._guild_log(message.guild)}, channel={self._channel_log(message.channel)}): {e}",
+                exc_info=True
+            )
             await channel.send(Messages.Discord.ERROR_OCCURRED.format(str(e)))
 
     async def _process_immediate_post(self, request_msg_id, channel_id, processing_msg_id, gctx):
@@ -461,10 +767,21 @@ class AnnouncementCog(commands.Cog):
         # Get job details — allow reposting for pending, missed, or failed jobs
         job = scheduler.get_job_by_message_id(request_msg_id)
         if not job or job.status not in ('pending', 'missed', 'failed'):
+            guild = self.bot.get_guild(int(gctx.guild_id)) if gctx.guild_id else None
+            logger.warning(
+                f"Immediate post aborted: job not actionable "
+                f"(job={job}, status={getattr(job, 'status', None)}, "
+                f"guild={self._guild_log(guild)}, channel_id={channel_id})"
+            )
             return
 
         channel = self.bot.get_channel(channel_id)
         if not channel:
+            guild = self.bot.get_guild(int(gctx.guild_id)) if gctx.guild_id else None
+            logger.warning(
+                f"Immediate post aborted: channel {channel_id} not in cache "
+                f"(guild={self._guild_log(guild)})"
+            )
             return
 
         processing_msg = await channel.fetch_message(processing_msg_id)
@@ -474,6 +791,10 @@ class AnnouncementCog(commands.Cog):
 
         # Post immediately
         try:
+            logger.info(
+                f"Immediate posting: job {job.id}, title={job.title!r}, group={gctx.group_id} "
+                f"(guild={self._guild_log(channel.guild)}, channel={self._channel_log(channel)})"
+            )
             result = await self.vrchat_api.post_announcement(gctx.group_id, job.title, job.content)
 
             if result.success:
@@ -492,14 +813,26 @@ class AnnouncementCog(commands.Cog):
                 gctx.state.mark_completed(str(request_msg_id))
 
                 await gctx.save_state()
+                logger.info(
+                    f"Immediate post succeeded: job {job.id} "
+                    f"(guild={self._guild_log(channel.guild)}, channel={self._channel_log(channel)})"
+                )
             else:
                 # Mark the job as failed
                 scheduler.mark_job_failed(job.id)
                 await gctx.save_state()
+                logger.error(
+                    f"Immediate post failed: job {job.id}, error={result.error} "
+                    f"(guild={self._guild_log(channel.guild)}, channel={self._channel_log(channel)})"
+                )
                 await channel.send(Messages.Discord.IMMEDIATE_POST_FAIL.format(result.error))
 
         except Exception as e:
-            logger.error(f"Error in immediate post: {e}")
+            logger.error(
+                f"Exception in immediate post for job {job.id} "
+                f"(guild={self._guild_log(channel.guild)}, channel={self._channel_log(channel)}): {e}",
+                exc_info=True
+            )
             # Mark job as failed so it's not silently lost
             scheduler.mark_job_failed(job.id)
             await gctx.save_state()
@@ -535,16 +868,29 @@ class AnnouncementCog(commands.Cog):
         try:
             # Send processing message
             processing_msg = await message.reply(Messages.Discord.PROCESSING)
+            logger.info(
+                f"Processing approved announcement: msg={message.id}, "
+                f"guild={self._guild_log(message.guild)}, channel={self._channel_log(message.channel)}, "
+                f"author={self._user_log(message.author)}"
+            )
 
             # Process with AI using the current message content
             result = await self.ai_processor.process_announcement(message.content)
 
             if not result.success:
+                logger.error(
+                    f"AI processing failed for msg {message.id} "
+                    f"(guild={self._guild_log(message.guild)}, channel={self._channel_log(message.channel)}): {result.error}"
+                )
                 await processing_msg.edit(content=Messages.Discord.ERROR_OCCURRED.format(result.error))
                 return
 
             # Check if timestamp is too far in the past
             if self._is_timestamp_too_old(result.timestamp):
+                logger.warning(
+                    f"Announcement timestamp too old for msg {message.id}: {result.timestamp} "
+                    f"(guild={self._guild_log(message.guild)}, channel={self._channel_log(message.channel)})"
+                )
                 role_mention = f"<@&{gctx.admin_role_id}>" if gctx.admin_role_id else ""
                 author_mention = message.author.mention
                 mentions = f"{role_mention} {author_mention}".strip()
@@ -576,9 +922,18 @@ class AnnouncementCog(commands.Cog):
             await processing_msg.add_reaction(self.fast_forward_emoji)
 
             await gctx.save_state()
+            logger.info(
+                f"Announcement booked: msg={message.id}, job={job_id}, bot_reply={processing_msg.id} "
+                f"(guild={self._guild_log(message.guild)}, channel={self._channel_log(message.channel)}, "
+                f"author={self._user_log(message.author)})"
+            )
 
         except Exception as e:
-            logger.error(Messages.Log.APPROVED_ANNOUNCEMENT_ERROR.format(e))
+            logger.error(
+                f"Error processing approved announcement for msg {message.id} "
+                f"(guild={self._guild_log(message.guild)}, channel={self._channel_log(message.channel)}): {e}",
+                exc_info=True
+            )
             if 'processing_msg' in locals():
                 await processing_msg.edit(content=Messages.Discord.PROCESSING_ERROR.format(str(e)))
             else:
