@@ -214,11 +214,15 @@ class AnnouncementCog(commands.Cog):
             logger.error(Messages.Log.ANNOUNCEMENT_REQUEST_ERROR.format(e))
             await message.reply(Messages.Discord.ERROR_OCCURRED.format(str(e)))
 
-    # --- Reaction handlers ---
+    # --- Dispatchers ---
 
     @commands.Cog.listener()
     async def on_raw_reaction_add(self, payload):
-        """Process reactions to announcement requests"""
+        """Dispatcher: route reaction-add events to the appropriate handler.
+
+        All filtering, guard checks, permission checks, and Discord object
+        resolution happen here. Handlers receive only pre-validated objects.
+        """
         # Ignore own reactions
         if payload.user_id == self.bot.user.id:
             return
@@ -258,62 +262,51 @@ class AnnouncementCog(commands.Cog):
 
         # Case 2: Immediate posting of queued announcement (Reaction to Bot's message)
         if emoji == self.fast_forward_emoji:
-            await self._handle_fast_forward_reaction(channel, payload, gctx)
+            request_msg_id = gctx.state.find_request_id_by_bot_message(msg_id)
+            if not request_msg_id:
+                return
+
+            job = self.state_manager.scheduler.get_job_by_message_id(request_msg_id)
+            if not job or job.status not in ('pending', 'missed', 'failed'):
+                return
+
+            try:
+                request_message = await channel.fetch_message(int(request_msg_id))
+                member = await self._fetch_member_safe(channel, payload.user_id)
+                if self._is_admin(member, gctx.admin_role_id) or request_message.author.id == payload.user_id:
+                    await self._process_immediate_post(request_msg_id, payload.channel_id, payload.message_id, gctx)
+            except Exception as e:
+                logger.error(f"Error handling immediate post request: {e}")
             return
 
         # Case 3: Create Calendar Event (Reaction to Bot's message)
         if emoji == self.calendar_emoji:
-            await self._handle_calendar_reaction(channel, payload, gctx)
+            request_msg_id = gctx.state.find_request_id_by_bot_message(msg_id)
+            if not request_msg_id:
+                return
 
-    async def _handle_fast_forward_reaction(self, channel, payload, gctx):
-        """Handle fast-forward reaction to immediately post a queued announcement"""
-        request_msg_id = gctx.state.find_request_id_by_bot_message(str(payload.message_id))
-        if not request_msg_id:
-            return
+            if gctx.state.has_calendar_event(request_msg_id):
+                return
 
-        # Guard: allow fast-forward for active, missed, or failed jobs (retry)
-        job = self.state_manager.scheduler.get_job_by_message_id(request_msg_id)
-        if not job or job.status not in ('pending', 'missed', 'failed'):
-            return
+            job = self.state_manager.scheduler.get_job_by_message_id(request_msg_id)
+            if not job or job.status == 'cancelled':
+                return
 
-        try:
-            request_message = await channel.fetch_message(int(request_msg_id))
-            member = await self._fetch_member_safe(channel, payload.user_id)
-
-            if self._is_admin(member, gctx.admin_role_id) or request_message.author.id == payload.user_id:
-                await self._process_immediate_post(request_msg_id, payload.channel_id, payload.message_id, gctx)
-        except Exception as e:
-            logger.error(f"Error handling immediate post request: {e}")
-
-    async def _handle_calendar_reaction(self, channel, payload, gctx):
-        """Handle calendar reaction to create a VRChat calendar event"""
-        request_msg_id = gctx.state.find_request_id_by_bot_message(str(payload.message_id))
-        if not request_msg_id:
-            return
-
-        # Check if event already exists
-        if gctx.state.has_calendar_event(request_msg_id):
-            return
-
-        # Guard: allow calendar creation for any non-cancelled job.
-        # Calendar events are independent of announcement posting status — even
-        # failed or missed announcements may need a calendar entry.
-        job = self.state_manager.scheduler.get_job_by_message_id(request_msg_id)
-        if not job or job.status == 'cancelled':
-            return
-
-        try:
-            request_message = await channel.fetch_message(int(request_msg_id))
-            member = await self._fetch_member_safe(channel, payload.user_id)
-
-            if self._is_admin(member, gctx.admin_role_id) or request_message.author.id == payload.user_id:
-                await self._process_calendar_event_creation(request_message, channel, gctx)
-        except Exception as e:
-            logger.error(f"Error handling calendar event creation: {e}")
+            try:
+                request_message = await channel.fetch_message(int(request_msg_id))
+                member = await self._fetch_member_safe(channel, payload.user_id)
+                if self._is_admin(member, gctx.admin_role_id) or request_message.author.id == payload.user_id:
+                    await self._process_calendar_event_creation(request_message, channel, gctx)
+            except Exception as e:
+                logger.error(f"Error handling calendar event creation: {e}")
 
     @commands.Cog.listener()
     async def on_raw_reaction_remove(self, payload):
-        """Handle reaction removals"""
+        """Dispatcher: route reaction-remove events to the appropriate handler.
+
+        All filtering, guard checks, permission checks, and Discord object
+        resolution happen here. Handlers receive only pre-validated objects.
+        """
         # Ignore own reactions
         if payload.user_id == self.bot.user.id:
             return
@@ -333,53 +326,69 @@ class AnnouncementCog(commands.Cog):
         guild_id = str(payload.guild_id)
         gctx = self.state_manager.get_guild_context(guild_id)
         emoji = str(payload.emoji)
+        msg_id = str(payload.message_id)
 
         # Case: Removal of Calendar reaction
         if emoji == self.calendar_emoji:
-            await self._handle_calendar_reaction_remove(channel, payload, gctx)
+            request_msg_id = gctx.state.find_request_id_by_bot_message(msg_id)
+            if not request_msg_id or not gctx.state.has_calendar_event(request_msg_id):
+                return
+
+            try:
+                member = await channel.guild.fetch_member(payload.user_id)
+                request_message = await channel.fetch_message(int(request_msg_id))
+                if not (self._is_admin(member, gctx.admin_role_id) or request_message.author.id == payload.user_id):
+                    return
+
+                await self._remove_calendar_event(request_msg_id, channel, gctx)
+            except Exception as e:
+                logger.error(Messages.Log.CALENDAR_EVENT_DELETE_ERROR.format(e))
 
         # Case: Removal of Approval reaction (on User's message)
         elif emoji == self.approval_emoji:
-            await self._handle_approval_reaction_remove(channel, payload, gctx)
-
-    async def _handle_calendar_reaction_remove(self, channel, payload, gctx):
-        """Handle removal of calendar reaction to delete the VRChat calendar event"""
-        request_msg_id = gctx.state.find_request_id_by_bot_message(str(payload.message_id))
-        if not request_msg_id or not gctx.state.has_calendar_event(request_msg_id):
-            return
-
-        try:
-            member = await channel.guild.fetch_member(payload.user_id)
-            request_message = await channel.fetch_message(int(request_msg_id))
-
-            if not (self._is_admin(member, gctx.admin_role_id) or request_message.author.id == payload.user_id):
+            if not gctx.state.is_queued(msg_id):
                 return
 
-            calendar_event_id = gctx.state.remove_calendar_event(request_msg_id)
-            result = await self.vrchat_api.delete_group_calendar_event(gctx.group_id, calendar_event_id)
-            await gctx.save_state()
-            if result.success:
-                await channel.send(Messages.Discord.CALENDAR_DELETED)
-            else:
-                await channel.send(result.error)
-        except Exception as e:
-            logger.error(Messages.Log.CALENDAR_EVENT_DELETE_ERROR.format(e))
+            message = await channel.fetch_message(payload.message_id)
+            if not message:
+                return
 
-    async def _handle_approval_reaction_remove(self, channel, payload, gctx):
-        """Handle removal of approval reaction to cancel a queued announcement"""
-        msg_id = str(payload.message_id)
-        if not gctx.state.is_queued(msg_id):
-            return
+            # Check if there are any approval reactions left
+            approval_reactions = [r for r in message.reactions if str(r.emoji) == self.approval_emoji]
+            if approval_reactions and approval_reactions[0].count > 0:
+                return
 
-        message = await channel.fetch_message(payload.message_id)
-        if not message:
-            return
+            await self._cancel_approved_announcement(msg_id, message, channel, gctx)
 
-        # Check if there are any approval reactions left
-        approval_reactions = [r for r in message.reactions if str(r.emoji) == self.approval_emoji]
-        if approval_reactions and approval_reactions[0].count > 0:
-            return
+    # --- Permission helpers ---
 
+    async def _fetch_member_safe(self, channel, user_id):
+        """Fetch a guild member, returning None on failure."""
+        try:
+            return await channel.guild.fetch_member(user_id)
+        except Exception:
+            return None
+
+    def _is_admin(self, member, admin_role_id) -> bool:
+        """Check if a member has the admin role."""
+        if not member or admin_role_id is None:
+            return False
+        return admin_role_id in [str(role.id) for role in member.roles]
+
+    # --- Handlers (pure business logic — no filtering, guards, or permission checks) ---
+
+    async def _remove_calendar_event(self, request_msg_id, channel, gctx):
+        """Remove a VRChat calendar event and persist the state change."""
+        calendar_event_id = gctx.state.remove_calendar_event(request_msg_id)
+        result = await self.vrchat_api.delete_group_calendar_event(gctx.group_id, calendar_event_id)
+        await gctx.save_state()
+        if result.success:
+            await channel.send(Messages.Discord.CALENDAR_DELETED)
+        else:
+            await channel.send(result.error)
+
+    async def _cancel_approved_announcement(self, msg_id, message, channel, gctx):
+        """Cancel an approved announcement: delete bot reply, cancel job, notify."""
         # Delete the bot reply message before cancelling
         bot_reply_id = gctx.state.get_bot_reply_id(msg_id)
         if bot_reply_id:
@@ -399,23 +408,6 @@ class AnnouncementCog(commands.Cog):
             await channel.send(Messages.Discord.CALENDAR_DELETED_WITH_CANCEL)
 
         await message.reply(Messages.Discord.BOOKING_CANCELLED)
-
-    # --- Permission helpers ---
-
-    async def _fetch_member_safe(self, channel, user_id):
-        """Fetch a guild member, returning None on failure."""
-        try:
-            return await channel.guild.fetch_member(user_id)
-        except Exception:
-            return None
-
-    def _is_admin(self, member, admin_role_id) -> bool:
-        """Check if a member has the admin role."""
-        if not member or admin_role_id is None:
-            return False
-        return admin_role_id in [str(role.id) for role in member.roles]
-
-    # --- Business logic ---
 
     async def _process_calendar_event_creation(self, message, channel, gctx):
         """Process the creation of a VRChat calendar event"""
