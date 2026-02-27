@@ -36,14 +36,19 @@ class Scheduler:
                                     group_id=None,
                                     event_start_timestamp=None, event_end_timestamp=None, event_title=None):
         """Schedule an announcement for the given timestamp"""
-        # Clean up any previous cancelled/terminal jobs for the same message
-        # (happens when an announcement is cancelled then re-approved)
-        stale_ids = [
+        # Clean up all existing jobs for the same message before scheduling a new one.
+        # Active (non-terminal) jobs are also unscheduled from APScheduler to prevent
+        # a duplicate post when a restored pending job and a freshly-created job both
+        # end up in APScheduler for the same message.
+        existing_ids = [
             jid for jid, j in self.jobs.items()
-            if j.message_id == message_id and j.status in TERMINAL_STATUSES
+            if j.message_id == message_id
         ]
-        for jid in stale_ids:
-            logger.info(f"Removing stale job {jid} (status={self.jobs[jid].status}) for re-approved msg {message_id}")
+        for jid in existing_ids:
+            status = self.jobs[jid].status
+            if status not in TERMINAL_STATUSES:
+                self.unschedule_job(jid)
+            logger.info(f"Removing existing job {jid} (status={status}) for re-scheduled msg {message_id}")
             del self.jobs[jid]
 
         job_id = str(uuid.uuid4())
