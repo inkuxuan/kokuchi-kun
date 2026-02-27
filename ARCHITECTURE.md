@@ -52,32 +52,27 @@ Per-guild operations use `GuildContext` objects (obtained via `state_manager.get
 
 State is stored in Google Cloud Firestore. The bot uses Application Default Credentials (no key file needed on GCP VMs).
 
-All per-server state lives under `servers/{server_id}/state/`. Shared state lives under `shared/`. (The names may differ according to `config.yaml`)
+Per-announcement state lives under `servers/{server_id}/announcements/`. Shared state lives under `shared/`. (Collection names may differ according to `config.yaml`.)
 
-**Design principle:** Entries in `pending`, `jobs`, and `calendar` are **never deleted**. Instead, their values are set to `None` or their status is updated. This ensures the bot can always recover its full picture of known announcements after a restart.
+**Design principle:** Announcement documents are **never deleted**. Fields are set to `None` or statuses are updated so the bot can always recover its full picture after a restart. Exactly one job is embedded per announcement document, making the 1-to-1 mapping structural.
 
-#### `pending`
+#### `servers/{server_id}/announcements/{msg_id}`
 
-**Type:** `dict[str, str | None]` — maps Discord message ID of the user's request → Discord message ID of the bot's reply (or `None`).
-
-**Purpose:** Tracks announcement requests through their lifecycle. The bot reply ID is used for reverse lookups (finding which request a reaction belongs to). Also serves as a guard against duplicate approvals — once `mark_queued` sets the bot reply ID, further approval reactions are ignored (`is_queued` returns `True`).
-
-| When | Transition |
-|------|------------|
-| User mentions bot with a request | `pending[msg_id] = None` |
-| Admin approves via reaction | `pending[msg_id] = bot_reply_id` |
-| Job completes or is cancelled | Entry is **kept** (not deleted) — `history` and job status are the canonical records |
-| Approval reaction removed (cancel) | `pending[msg_id] = None` (bot reply is deleted from Discord) |
-
-#### `jobs`
-
-**Type:** `list[dict]` — serialized `JobData` objects.
-
-Each dict contains:
+Each document corresponds to one Discord request message and contains:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `id` | `str` | UUID, the APScheduler job ID |
+| `guild_id` | `str` | Discord server ID |
+| `bot_reply_id` | `str \| null` | Discord message ID of the bot's confirmation reply |
+| `calendar_event_id` | `str \| null` | VRChat calendar event ID (null if none or removed) |
+| `completed` | `bool` | True if the announcement was successfully posted |
+| `job` | `dict \| null` | Full serialized `JobData` (see fields below), or null if never scheduled |
+
+Embedded `job` fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | `str` | UUID — the APScheduler job ID |
 | `message_id` | `str` | Discord message ID of the user's request |
 | `timestamp` | `float` | Unix timestamp for when to post |
 | `title` | `str` | Announcement title |
@@ -90,21 +85,18 @@ Each dict contains:
 | `event_title` | `str \| None` | Calendar event title |
 | `formatted_date_time` | `str \| None` | Human-readable date string |
 
-**Purpose:** Source of truth for all scheduled announcements. Enables `/list`, `/cancel`, fast-forward reposting, and restoration after restart.
+**Announcement lifecycle states** (derivable from the document):
 
-| When | Transition |
-|------|------------|
-| Admin approves a request | New entry added with `status = "pending"` |
-| Scheduled job fires successfully | `status` → `"success"` |
-| Scheduled job fails (API error, auth error) | `status` → `"failed"` |
-| Admin or user cancels | `status` → `"cancelled"` |
-| On restart, past-due job beyond `misfire_grace_time` | `status` → `"missed"` |
-| Fast-forward (⏩) succeeds on a missed/failed job | `status` → `"success"` |
-| Fast-forward (⏩) fails | `status` → `"failed"` |
+| State | Condition |
+|-------|-----------|
+| `pending` | `job` is null (request registered, not yet approved) |
+| `queued` | `job.status = "pending"` |
+| `failed` | `job.status = "failed"` |
+| `completed` | `completed = true` or `job.status = "success"` |
+| `cancelled` | `job.status = "cancelled"` |
+| `missed` | `job.status = "missed"` |
 
-Jobs are **never deleted** from the list. All statuses are persisted so the bot has a complete picture after restart. Terminal jobs (`success`, `failed`, `cancelled`) and `missed` jobs are kept in memory but not re-scheduled with APScheduler.
-
-**Allowed actions by status:**
+**Allowed actions by job status:**
 
 | Action | pending | missed | failed | success | cancelled |
 |--------|---------|--------|--------|---------|-----------|
@@ -112,32 +104,12 @@ Jobs are **never deleted** from the list. All statuses are persisted so the bot 
 | Calendar (📅) | Yes | Yes | Yes | Yes | No |
 | Cancel | Yes | Yes | Yes | No | No |
 
-#### `history`
+Each announcement always has at most one job. The `schedule_announcement` call in the Scheduler removes all existing jobs for the same `message_id` before creating a new one, enforcing the 1-to-1 invariant.
 
-**Type:** `list[str]` — list of Discord message IDs.
+#### Granular vs bulk saves
 
-**Purpose:** Rolling log of completed announcements. Before accepting a new request, `is_in_history(msg_id)` is checked — if found, the bot replies "already booked." Capped at 1000 entries (oldest dropped).
-
-| When | Transition |
-|------|------------|
-| Job completes successfully or immediate post succeeds | `history.append(msg_id)` |
-| Length exceeds 1000 | Oldest entries trimmed |
-
-Individual entries are never explicitly deleted.
-
-#### `calendar`
-
-**Type:** `dict[str, str | None]` — maps Discord message ID of the user's request → VRChat calendar event ID (or `None` if removed).
-
-**Purpose:** Maps announcements to their VRChat group calendar events. Used to prevent duplicate calendar creation and to look up the event ID for deletion.
-
-| When | Transition |
-|------|------------|
-| User/admin adds 📅 reaction | `calendar[msg_id] = event_id` |
-| User/admin removes 📅 reaction | `calendar[msg_id] = None` (VRChat API deletes the event) |
-| Announcement cancelled | `calendar[msg_id] = None` (VRChat API deletes the event) |
-
-Entries are **set to `None`** rather than deleted, so the bot knows the message ID was once associated with a calendar event.
+- **Granular** (`save_announcement(guild_id, msg_id)`): called after every single state transition (approval, completion, calendar change, cancel). Writes only the one affected document.
+- **Bulk** (`save_state(guild_id)`): called only at startup after `load_state()` finishes, to persist any status updates (e.g. newly missed jobs). Iterates all known msg_ids and writes each.
 
 #### Shared state (`shared/`)
 
@@ -148,22 +120,30 @@ Entries are **set to `None`** rather than deleted, so the bot knows the message 
 #### Lifecycle summary
 
 ```
-User request  →  pending[msg_id] = None
-Admin approves →  pending[msg_id] = bot_reply_id  +  jobs gains new entry (status=pending)
-Calendar react →  calendar[msg_id] = vrchat_event_id
-Job fires OK   →  jobs status → success  +  history.append(msg_id)
-Job fires fail →  jobs status → failed
-Fast-forward OK→  jobs status → success  +  history.append(msg_id)
-Cancel         →  jobs status → cancelled  +  pending[msg_id] = None  +  calendar[msg_id] = None
-Bot restart    →  pending/jobs/history/calendar loaded from Firestore
+User request   →  announcement doc created: {bot_reply_id: null, completed: false, job: null}
+Admin approves →  announcement doc updated: {bot_reply_id: <id>, job: {status: "pending", ...}}
+Calendar react →  announcement doc updated: {calendar_event_id: <id>}
+Job fires OK   →  announcement doc updated: {completed: true, job.status: "success"}
+Job fires fail →  announcement doc updated: {job.status: "failed"}
+Fast-forward OK→  announcement doc updated: {completed: true, job.status: "success"}
+Cancel         →  announcement doc updated: {job.status: "cancelled", bot_reply_id: null, calendar_event_id: null}
+Bot restart    →  announcements subcollection loaded; jobs restored from embedded job dicts
                   past-due pending jobs within grace period → re-scheduled (fire immediately)
-                  past-due pending jobs beyond grace period → status = missed
+                  past-due pending jobs beyond grace period → status = missed (doc updated on bulk save)
                   terminal/missed jobs → kept in memory, not re-scheduled
 ```
 
-#### Migration from JSON files
+#### Migration
 
-(Deprecated)
+To migrate from the old flat-list format (`pending`/`history`/`calendar`/`jobs` docs under `state/`) to per-announcement documents, run before deploying the new code:
+
+```bash
+uv run python scripts/migrate_firestore.py [--config config.yaml]
+```
+
+The bot also has a built-in fallback: if no `announcements` documents are found at startup, it automatically loads the old format. This covers cases where the migration script was not run.
+
+The older JSON-to-Firestore migration (now deprecated):
 
 ```bash
 uv run python scripts/migrate_to_firestore.py [--server-id SERVER_ID]

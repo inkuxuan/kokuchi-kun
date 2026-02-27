@@ -105,14 +105,3 @@ class AnnouncementState:
         logger.info(f"State: calendar event removed msg={msg_id}, was={event_id}")
         return event_id
 
-    # --- Persistence ---
-
-    async def save(self, persistence) -> None:
-        await persistence.save_data('pending', self.pending_requests)
-        await persistence.save_data('history', self.history)
-        await persistence.save_data('calendar', self.calendar_events)
-
-    async def load(self, persistence) -> None:
-        self.pending_requests = await persistence.load_data('pending', {})
-        self.history = await persistence.load_data('history', [])
-        self.calendar_events = await persistence.load_data('calendar', {})

@@ -52,8 +52,11 @@ class AnnouncementCog(commands.Cog):
             if message_id and status == 'success':
                 gctx.state.mark_completed(message_id)
 
-            # Save state for both success and failure
-            await gctx.save_state()
+            # Save the updated announcement document
+            if message_id:
+                await gctx.save_announcement(message_id)
+            else:
+                await gctx.save_state()
             guild = self.bot.get_guild(int(guild_id)) if guild_id else None
             logger.info(
                 f"Job completion callback: status={status}, message_id={message_id}, "
@@ -227,7 +230,7 @@ class AnnouncementCog(commands.Cog):
 
             # Simply store the message ID and add reaction
             gctx.state.add_pending(msg_id)
-            await gctx.save_state()
+            await gctx.save_announcement(msg_id)
             await message.add_reaction(self.seen_emoji)
             await message.reply(Messages.Discord.REQUEST_CONFIRMED)
             logger.info(
@@ -607,7 +610,7 @@ class AnnouncementCog(commands.Cog):
             f"(guild={self._guild_log(channel.guild)}, channel={self._channel_log(channel)})"
         )
         result = await self.vrchat_api.delete_group_calendar_event(gctx.group_id, calendar_event_id)
-        await gctx.save_state()
+        await gctx.save_announcement(request_msg_id)
         if result.success:
             logger.info(
                 f"Calendar event {calendar_event_id} deleted successfully "
@@ -735,7 +738,7 @@ class AnnouncementCog(commands.Cog):
 
                 # Store event ID
                 gctx.state.set_calendar_event(str(message.id), calendar_id)
-                await gctx.save_state()
+                await gctx.save_announcement(str(message.id))
 
                 # Send success message
                 calendar_url = f"https://vrchat.com/home/group/{gctx.group_id}/calendar/{calendar_id}"
@@ -812,7 +815,7 @@ class AnnouncementCog(commands.Cog):
                 # Mark completed in state
                 gctx.state.mark_completed(str(request_msg_id))
 
-                await gctx.save_state()
+                await gctx.save_announcement(request_msg_id)
                 logger.info(
                     f"Immediate post succeeded: job {job.id} "
                     f"(guild={self._guild_log(channel.guild)}, channel={self._channel_log(channel)})"
@@ -820,7 +823,7 @@ class AnnouncementCog(commands.Cog):
             else:
                 # Mark the job as failed
                 scheduler.mark_job_failed(job.id)
-                await gctx.save_state()
+                await gctx.save_announcement(request_msg_id)
                 logger.error(
                     f"Immediate post failed: job {job.id}, error={result.error} "
                     f"(guild={self._guild_log(channel.guild)}, channel={self._channel_log(channel)})"
@@ -835,7 +838,7 @@ class AnnouncementCog(commands.Cog):
             )
             # Mark job as failed so it's not silently lost
             scheduler.mark_job_failed(job.id)
-            await gctx.save_state()
+            await gctx.save_announcement(request_msg_id)
             await channel.send(Messages.Discord.IMMEDIATE_POST_FAIL.format(str(e)))
 
     def _is_timestamp_too_old(self, timestamp) -> bool:
@@ -921,7 +924,7 @@ class AnnouncementCog(commands.Cog):
             await processing_msg.add_reaction(self.calendar_emoji)
             await processing_msg.add_reaction(self.fast_forward_emoji)
 
-            await gctx.save_state()
+            await gctx.save_announcement(str(message.id))
             logger.info(
                 f"Announcement booked: msg={message.id}, job={job_id}, bot_reply={processing_msg.id} "
                 f"(guild={self._guild_log(message.guild)}, channel={self._channel_log(message.channel)}, "

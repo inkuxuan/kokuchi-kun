@@ -79,3 +79,37 @@ class Persistence:
         except Exception as e:
             logger.error(f"Failed to load shared {key}: {e}")
             return default
+
+    async def save_announcement(self, msg_id: str, data: dict) -> bool:
+        """Write a per-announcement document to servers/{server_id}/announcements/{msg_id}."""
+        try:
+            doc_ref = (
+                self.db.collection(self.servers_collection)
+                .document(self.server_id)
+                .collection('announcements')
+                .document(msg_id)
+            )
+            await doc_ref.set(data)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to save announcement {msg_id}: {e}")
+            return False
+
+    async def load_announcements(self) -> dict:
+        """Stream all docs from servers/{server_id}/announcements/.
+
+        Returns {msg_id: doc_dict}.
+        """
+        try:
+            col_ref = (
+                self.db.collection(self.servers_collection)
+                .document(self.server_id)
+                .collection('announcements')
+            )
+            result = {}
+            async for doc in col_ref.stream():
+                result[doc.id] = doc.to_dict()
+            return result
+        except Exception as e:
+            logger.error(f"Failed to load announcements: {e}")
+            return {}

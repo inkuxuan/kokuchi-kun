@@ -99,9 +99,9 @@ class AdminCog(commands.Cog):
             await ctx.reply(Messages.Discord.JOB_NOT_FOUND.format(job_id))
             return
 
-        # Cancel via state_manager (scheduler + state + calendar + persist)
-        success, deleted_calendar = await self.state_manager.cancel_announcement_detailed(
-            guild_id, job.message_id
+        # Cancel via state_manager targeting the exact job ID (not message_id)
+        success, deleted_calendar = await self.state_manager.cancel_specific_job(
+            guild_id, job_id
         )
 
         if success:

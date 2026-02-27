@@ -21,8 +21,12 @@ class GuildContext:
         self._state_manager = state_manager
 
     async def save_state(self):
-        """Save this guild's state to Firestore."""
+        """Save this guild's state to Firestore (bulk — all announcements)."""
         await self._state_manager.save_state(self.guild_id)
+
+    async def save_announcement(self, msg_id):
+        """Save a single announcement document for this guild."""
+        await self._state_manager.save_announcement(self.guild_id, msg_id)
 
     async def load_state(self):
         """Load this guild's state from Firestore.
@@ -102,26 +106,68 @@ class StateManager:
 
     # --- State persistence ---
 
-    async def save_state(self, guild_id=None):
-        """Save the current state to Firestore for the given guild.
+    async def save_announcement(self, guild_id, msg_id):
+        """Save a single announcement document for a guild.
 
-        If guild_id is None, saves all guilds.
+        Writes to servers/{server_id}/announcements/{msg_id} with the full
+        current state of that announcement (bot_reply_id, calendar_event_id,
+        completed flag, and embedded job dict).
+        """
+        state = self.get_state(guild_id)
+        persistence = self.get_persistence(guild_id)
+        if not persistence:
+            logger.warning(f"No persistence configured for guild {guild_id}, announcement not saved")
+            return
+
+        job = self.scheduler.get_job_by_message_id(msg_id)
+        doc = {
+            'guild_id': guild_id,
+            'bot_reply_id': state.get_bot_reply_id(msg_id),
+            'calendar_event_id': state.get_calendar_event_id(msg_id),
+            'completed': state.is_in_history(msg_id),
+            'job': job.to_dict() if job else None,
+        }
+        await persistence.save_announcement(msg_id, doc)
+        logger.info(f"Saved announcement {msg_id} for guild {guild_id}")
+
+    async def save_state(self, guild_id=None):
+        """Bulk save: write all known announcements for the given guild.
+
+        If guild_id is None, saves all guilds. Used only on on_ready after
+        load_state() to persist any status updates (e.g. missed jobs).
         """
         guilds_to_save = [guild_id] if guild_id is not None else list(self.guild_states.keys())
         for gid in guilds_to_save:
             state = self.get_state(gid)
             persistence = self.get_persistence(gid)
-            if persistence:
-                await state.save(persistence)
-                jobs_data = self.scheduler.get_jobs_data(guild_id=gid)
-                logger.info(f"Saving {len(jobs_data)} jobs for guild {gid}: {[(j['id'][:8], j['message_id'], j['status']) for j in jobs_data]}")
-                await persistence.save_data('jobs', jobs_data)
-                logger.info(f"State saved for guild {gid}")
-            else:
+            if not persistence:
                 logger.warning(f"No persistence configured for guild {gid}, state not saved")
+                continue
+
+            # Collect all known msg_ids from state and scheduler
+            msg_ids = set(state.pending_requests.keys())
+            for job in self.scheduler.jobs.values():
+                if job.guild_id == gid and job.message_id:
+                    msg_ids.add(job.message_id)
+
+            for msg_id in msg_ids:
+                job = self.scheduler.get_job_by_message_id(msg_id)
+                doc = {
+                    'guild_id': gid,
+                    'bot_reply_id': state.get_bot_reply_id(msg_id),
+                    'calendar_event_id': state.get_calendar_event_id(msg_id),
+                    'completed': state.is_in_history(msg_id),
+                    'job': job.to_dict() if job else None,
+                }
+                await persistence.save_announcement(msg_id, doc)
+
+            logger.info(f"State saved for guild {gid}: {len(msg_ids)} announcements")
 
     async def load_state(self, guild_id):
         """Load state from Firestore for a specific guild.
+
+        Tries the new per-announcement format first; falls back to the old
+        flat-list format if no announcement documents are found.
 
         Returns (restored_job_count, pending_count, skipped_jobs_list).
         """
@@ -131,10 +177,46 @@ class StateManager:
             logger.warning(f"No persistence configured for guild {guild_id}, skipping state load")
             return 0, 0, []
 
-        await state.load(persistence)
-        logger.info(f"State loaded for guild {guild_id}: {len(state.pending_requests)} pending, {len(state.history)} history, {len(state.calendar_events)} calendar")
+        # --- Try new per-announcement format ---
+        announcements = await persistence.load_announcements()
 
-        jobs_data = await persistence.load_data('jobs', [])
+        if announcements:
+            logger.info(f"Loading {len(announcements)} announcement documents for guild {guild_id}")
+            jobs_data = []
+            for msg_id, doc in announcements.items():
+                bot_reply_id = doc.get('bot_reply_id')
+                calendar_event_id = doc.get('calendar_event_id')
+                completed = doc.get('completed', False)
+                job_dict = doc.get('job')
+
+                # Reconstruct pending_requests (always — even for completed)
+                state.pending_requests[msg_id] = bot_reply_id
+
+                # Reconstruct calendar_events
+                if calendar_event_id is not None:
+                    state.calendar_events[msg_id] = calendar_event_id
+
+                # Reconstruct history
+                if completed and msg_id not in state.history:
+                    state.history.append(msg_id)
+
+                # Collect job dicts for scheduler restoration
+                if job_dict:
+                    jobs_data.append(job_dict)
+
+        else:
+            # --- Fallback to old flat-list format ---
+            logger.info(f"No announcement documents found for guild {guild_id}, falling back to old format")
+            state.pending_requests = await persistence.load_data('pending', {})
+            state.history = await persistence.load_data('history', [])
+            state.calendar_events = await persistence.load_data('calendar', {})
+            jobs_data = await persistence.load_data('jobs', [])
+
+        logger.info(
+            f"State loaded for guild {guild_id}: {len(state.pending_requests)} pending, "
+            f"{len(state.history)} history, {len(state.calendar_events)} calendar"
+        )
+
         restored_count, skipped_jobs = self.scheduler.restore_jobs(
             jobs_data,
             guild_id=guild_id,
@@ -178,7 +260,7 @@ class StateManager:
                 await self.vrchat_api.delete_group_calendar_event(group_id, calendar_event_id)
 
         # Persist the cancellation
-        await self.save_state(guild_id)
+        await self.save_announcement(guild_id, message_id)
 
         return True
 
@@ -201,7 +283,44 @@ class StateManager:
                 await self.vrchat_api.delete_group_calendar_event(group_id, calendar_event_id)
                 deleted_calendar = True
 
-        await self.save_state(guild_id)
+        await self.save_announcement(guild_id, message_id)
         logger.info(f"Announcement cancelled: msg={message_id}, calendar_deleted={deleted_calendar}")
+
+        return True, deleted_calendar
+
+    async def cancel_specific_job(self, guild_id, job_id):
+        """Cancel a specific job by its exact job ID (not by message_id).
+
+        Fixes the admin /cancel bug where cancel_job_by_message_id could cancel
+        a different job for the same message.
+
+        Returns (success, deleted_calendar).
+        """
+        logger.info(f"Cancelling specific job: guild={guild_id}, job={job_id}")
+
+        job = self.scheduler.get_job(job_id)
+        if not job:
+            logger.warning(f"Cancel failed: job {job_id} not found")
+            return False, False
+
+        msg_id = job.message_id
+
+        if not self.scheduler.cancel_job(job_id):
+            logger.warning(f"Cancel failed: scheduler could not cancel job {job_id}")
+            return False, False
+
+        state = self.get_state(guild_id)
+        calendar_event_id = state.cancel(msg_id)
+
+        deleted_calendar = False
+        if calendar_event_id:
+            group_id = self._get_group_id(guild_id)
+            if group_id:
+                logger.info(f"Deleting associated calendar event {calendar_event_id}")
+                await self.vrchat_api.delete_group_calendar_event(group_id, calendar_event_id)
+                deleted_calendar = True
+
+        await self.save_announcement(guild_id, msg_id)
+        logger.info(f"Job {job_id} cancelled: msg={msg_id}, calendar_deleted={deleted_calendar}")
 
         return True, deleted_calendar
