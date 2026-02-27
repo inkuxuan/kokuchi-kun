@@ -84,6 +84,14 @@ class Scheduler:
     async def _post_announcement(self, job_id, title, content, group_id):
         """Execute the announcement posting"""
         try:
+            # Guard against duplicate execution: if the job was fast-forwarded (or otherwise
+            # completed) while APScheduler had already queued this coroutine, skip execution.
+            if job_id in self.jobs and self.jobs[job_id].status in TERMINAL_STATUSES:
+                logger.info(
+                    f"Job {job_id} already terminal (status={self.jobs[job_id].status}), skipping execution"
+                )
+                return
+
             logger.info(Messages.Log.EXECUTING_JOB.format(job_id))
 
             # Re-authenticate if needed
