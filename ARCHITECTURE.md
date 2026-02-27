@@ -141,8 +141,6 @@ To migrate from the old flat-list format (`pending`/`history`/`calendar`/`jobs` 
 uv run python scripts/migrate_firestore.py [--config config.yaml]
 ```
 
-The bot also has a built-in fallback: if no `announcements` documents are found at startup, it automatically loads the old format. This covers cases where the migration script was not run.
-
 The older JSON-to-Firestore migration (now deprecated):
 
 ```bash
