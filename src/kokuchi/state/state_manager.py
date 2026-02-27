@@ -177,40 +177,30 @@ class StateManager:
             logger.warning(f"No persistence configured for guild {guild_id}, skipping state load")
             return 0, 0, []
 
-        # --- Try new per-announcement format ---
         announcements = await persistence.load_announcements()
+        logger.info(f"Loading {len(announcements)} announcement documents for guild {guild_id}")
 
-        if announcements:
-            logger.info(f"Loading {len(announcements)} announcement documents for guild {guild_id}")
-            jobs_data = []
-            for msg_id, doc in announcements.items():
-                bot_reply_id = doc.get('bot_reply_id')
-                calendar_event_id = doc.get('calendar_event_id')
-                completed = doc.get('completed', False)
-                job_dict = doc.get('job')
+        jobs_data = []
+        for msg_id, doc in announcements.items():
+            bot_reply_id = doc.get('bot_reply_id')
+            calendar_event_id = doc.get('calendar_event_id')
+            completed = doc.get('completed', False)
+            job_dict = doc.get('job')
 
-                # Reconstruct pending_requests (always — even for completed)
-                state.pending_requests[msg_id] = bot_reply_id
+            # Reconstruct pending_requests (always — even for completed)
+            state.pending_requests[msg_id] = bot_reply_id
 
-                # Reconstruct calendar_events
-                if calendar_event_id is not None:
-                    state.calendar_events[msg_id] = calendar_event_id
+            # Reconstruct calendar_events
+            if calendar_event_id is not None:
+                state.calendar_events[msg_id] = calendar_event_id
 
-                # Reconstruct history
-                if completed and msg_id not in state.history:
-                    state.history.append(msg_id)
+            # Reconstruct history
+            if completed and msg_id not in state.history:
+                state.history.append(msg_id)
 
-                # Collect job dicts for scheduler restoration
-                if job_dict:
-                    jobs_data.append(job_dict)
-
-        else:
-            # --- Fallback to old flat-list format ---
-            logger.info(f"No announcement documents found for guild {guild_id}, falling back to old format")
-            state.pending_requests = await persistence.load_data('pending', {})
-            state.history = await persistence.load_data('history', [])
-            state.calendar_events = await persistence.load_data('calendar', {})
-            jobs_data = await persistence.load_data('jobs', [])
+            # Collect job dicts for scheduler restoration
+            if job_dict:
+                jobs_data.append(job_dict)
 
         logger.info(
             f"State loaded for guild {guild_id}: {len(state.pending_requests)} pending, "

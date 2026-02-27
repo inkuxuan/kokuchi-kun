@@ -109,8 +109,8 @@ async def migrate_guild(
         if msg_id:
             jobs_by_msg.setdefault(msg_id, []).append(job)
 
-    # Collect all known msg_ids
-    all_msg_ids = set(pending.keys()) | set(jobs_by_msg.keys())
+    # Collect all known msg_ids (include history-only entries so they survive migration)
+    all_msg_ids = set(pending.keys()) | set(jobs_by_msg.keys()) | set(history)
 
     history_set = set(history)
 
