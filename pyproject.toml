@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "kokuchi-kun"
-version = "3.0.1"
+version = "4.0.0"
 
 description = "Discord bot to schedule VRChat group announcements"
 readme = "README.md"
