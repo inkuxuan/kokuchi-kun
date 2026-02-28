@@ -74,7 +74,7 @@ class AdminCog(commands.Cog):
                 content = content[:97] + "..."
 
             embed.add_field(
-                name=f"ID: {job.id} - <t:{int(job.timestamp)}:F>",
+                name=f"メッセージID: {job.id} - <t:{int(job.timestamp)}:F>",
                 value=f"タイトル: {job.title}\n内容: {content}",
                 inline=False
             )
@@ -85,31 +85,44 @@ class AdminCog(commands.Cog):
         name="cancel",
         description="Cancel a scheduled announcement"
     )
-    async def cancel_job(self, ctx, job_id: str):
-        """Cancel a scheduled announcement"""
+    async def cancel_job(self, ctx, message_id: str):
+        """Cancel a scheduled announcement by message ID"""
         # Verify the job belongs to this guild before cancelling
         guild_id = str(ctx.guild.id)
-        job = self.state_manager.scheduler.get_job(job_id)
+        job = self.state_manager.scheduler.get_job(message_id)
         if job is None or job.guild_id != guild_id:
-            await ctx.reply(Messages.Discord.JOB_NOT_FOUND.format(job_id))
+            await ctx.reply(Messages.Discord.JOB_NOT_FOUND.format(message_id))
             return
 
         # Only allow cancelling active, missed, or failed jobs
         if job.status not in ('pending', 'missed', 'failed'):
-            await ctx.reply(Messages.Discord.JOB_NOT_FOUND.format(job_id))
+            await ctx.reply(Messages.Discord.JOB_NOT_FOUND.format(message_id))
             return
 
-        # Cancel via state_manager targeting the exact job ID (not message_id)
+        # Read bot reply and channel info before cancelling
+        state = self.state_manager.get_state(guild_id)
+        bot_reply_id = state.get_bot_reply_id(job.message_id)
+        channel_id = job.channel_id
+
         success, deleted_calendar = await self.state_manager.cancel_specific_job(
-            guild_id, job_id
+            guild_id, message_id
         )
 
         if success:
+            # Delete the bot's reply embed
+            if bot_reply_id and channel_id:
+                channel = self.bot.get_channel(int(channel_id))
+                if channel:
+                    try:
+                        msg = await channel.fetch_message(int(bot_reply_id))
+                        await msg.delete()
+                    except Exception as e:
+                        logger.error(f"Failed to delete bot reply {bot_reply_id} on cancel: {e}")
             if deleted_calendar:
                 await ctx.send(Messages.Discord.CALENDAR_DELETED_WITH_CANCEL)
-            await ctx.reply(Messages.Discord.JOB_CANCELLED.format(job_id))
+            await ctx.reply(Messages.Discord.JOB_CANCELLED.format(message_id))
         else:
-            await ctx.reply(Messages.Discord.JOB_NOT_FOUND.format(job_id))
+            await ctx.reply(Messages.Discord.JOB_NOT_FOUND.format(message_id))
 
     @commands.hybrid_command(
         name="help",
@@ -124,7 +137,7 @@ class AdminCog(commands.Cog):
 
         prefix = self.prefix
         embed.add_field(name=f"{prefix}list または /list", value=Messages.Discord.CMD_LIST_DESC, inline=False)
-        embed.add_field(name=f"{prefix}cancel [ジョブID] または /cancel", value=Messages.Discord.CMD_CANCEL_DESC, inline=False)
+        embed.add_field(name=f"{prefix}cancel [メッセージID] または /cancel", value=Messages.Discord.CMD_CANCEL_DESC, inline=False)
         embed.add_field(name=f"{prefix}help または /help", value=Messages.Discord.CMD_HELP_DESC, inline=False)
 
         # Add version information

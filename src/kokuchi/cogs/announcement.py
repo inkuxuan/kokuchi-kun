@@ -908,6 +908,7 @@ class AnnouncementCog(commands.Cog):
                 str(message.id),
                 guild_id=gctx.guild_id,
                 group_id=gctx.group_id,
+                channel_id=str(message.channel.id),
                 event_start_timestamp=result.event_start_timestamp,
                 event_end_timestamp=result.event_end_timestamp,
                 event_title=result.event_title,

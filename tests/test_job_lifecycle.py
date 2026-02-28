@@ -57,6 +57,8 @@ def mock_persistence():
     persistence = MagicMock()
     persistence.load_data = AsyncMock(return_value=[])
     persistence.save_data = AsyncMock(return_value=True)
+    persistence.save_announcement = AsyncMock(return_value=True)
+    persistence.load_announcements = AsyncMock(return_value={})
     return persistence
 
 
@@ -212,7 +214,6 @@ class TestCancelReapprovePost:
         scheduler.cancel_job(job_id1)
 
         job_id2 = await _schedule(scheduler, msg_id="msg_1", title="v2")
-        assert job_id1 not in scheduler.jobs
         assert scheduler.jobs[job_id2].status == "pending"
         assert scheduler.jobs[job_id2].title == "v2"
 
@@ -254,8 +255,6 @@ class TestCancelReapproveCancelAgain:
 
         # Third cycle
         job_id3 = await _schedule(scheduler, msg_id="msg_1", title="v3")
-        assert job_id1 not in scheduler.jobs
-        assert job_id2 not in scheduler.jobs
         assert scheduler.jobs[job_id3].status == "pending"
         assert scheduler.jobs[job_id3].title == "v3"
 
@@ -502,34 +501,6 @@ class TestPersistence:
         assert len(all_data) == 2
 
     @pytest.mark.asyncio
-    async def test_state_persistence_roundtrip(self, state, mock_persistence):
-        """AnnouncementState save/load roundtrip."""
-        state.add_pending("msg_1")
-        state.mark_queued("msg_1", "reply_1")
-        state.set_calendar_event("msg_1", "cal_1")
-        state.mark_completed("msg_1")
-        state.add_pending("msg_2")
-
-        await state.save(mock_persistence)
-        assert mock_persistence.save_data.call_count == 3
-
-        # Simulate load
-        mock_persistence.load_data.side_effect = [
-            {"msg_1": "reply_1", "msg_2": None},  # pending
-            ["msg_1"],                              # history
-            {"msg_1": "cal_1"},                     # calendar
-        ]
-
-        new_state = AnnouncementState()
-        await new_state.load(mock_persistence)
-        assert new_state.is_pending("msg_1")
-        assert new_state.is_pending("msg_2")
-        assert new_state.is_in_history("msg_1")
-        assert new_state.get_calendar_event_id("msg_1") == "cal_1"
-        # queued_announcements is NOT persisted, should be empty
-        assert not new_state.is_queued("msg_1")
-
-    @pytest.mark.asyncio
     async def test_restore_terminal_jobs_kept_in_memory(self, scheduler):
         """Terminal jobs are loaded into memory but not scheduled."""
         ts = _future_ts()
@@ -688,8 +659,8 @@ class TestStateManagerOperations:
         state.add_pending("msg_1")
 
         await state_manager.save_state(GUILD_ID)
-        # Should have saved state (pending, history, calendar) + jobs
-        assert mock_persistence.save_data.call_count >= 4
+        # Should have saved announcement doc for msg_1
+        assert mock_persistence.save_announcement.call_count >= 1
 
     @pytest.mark.asyncio
     async def test_guild_context_caching(self, state_manager):
@@ -704,7 +675,7 @@ class TestStateManagerOperations:
         state.add_pending("msg_1")
 
         await gctx.save_state()
-        assert mock_persistence.save_data.called
+        assert mock_persistence.save_announcement.called
 
 
 # ===========================================================================
@@ -721,18 +692,17 @@ class TestEdgeCases:
         assert len(scheduler.list_jobs()) == 2
 
     @pytest.mark.asyncio
-    async def test_stale_cleanup_only_removes_terminal(self, scheduler):
-        """Active job for same message_id is NOT removed by stale cleanup."""
+    async def test_reschedule_replaces_existing_job(self, scheduler):
+        """Rescheduling for same msg_id always replaces the existing job, even if pending."""
         ts = _future_ts()
-        job_id1 = await _schedule(scheduler, msg_id="msg_1", ts=ts)
-        # job_id1 is still pending (not terminal)
-        # Scheduling again for same msg_id should NOT remove it because
-        # the cleanup only targets TERMINAL jobs
-        job_id2 = await _schedule(scheduler, msg_id="msg_1", ts=ts + 60)
-        # Both exist because job_id1 was pending (not terminal)
-        # Actually, stale cleanup only removes terminal, so job_id1 stays
-        assert job_id1 in scheduler.jobs
-        assert job_id2 in scheduler.jobs
+        job_id1 = await _schedule(scheduler, msg_id="msg_1", ts=ts, title="v1")
+        assert scheduler.jobs["msg_1"].status == "pending"
+
+        job_id2 = await _schedule(scheduler, msg_id="msg_1", ts=ts + 60, title="v2")
+        # Since job_id == message_id, job_id1 == job_id2 == "msg_1"
+        assert scheduler.jobs["msg_1"].title == "v2"
+        assert scheduler.jobs["msg_1"].status == "pending"
+        assert len(scheduler.list_jobs()) == 1
 
     def test_history_cap(self, state):
         """History respects max_history limit."""

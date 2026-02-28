@@ -119,7 +119,7 @@ class StateManager:
             logger.warning(f"No persistence configured for guild {guild_id}, announcement not saved")
             return
 
-        job = self.scheduler.get_job_by_message_id(msg_id)
+        job = self.scheduler.get_job(msg_id)
         doc = {
             'guild_id': guild_id,
             'bot_reply_id': state.get_bot_reply_id(msg_id),

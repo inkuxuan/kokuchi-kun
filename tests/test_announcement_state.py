@@ -1,19 +1,10 @@
 import pytest
-from unittest.mock import AsyncMock
 from kokuchi.state.announcement_state import AnnouncementState
 
 
 @pytest.fixture
 def state():
     return AnnouncementState(max_history=5)
-
-
-@pytest.fixture
-def mock_persistence():
-    persistence = AsyncMock()
-    persistence.save_data = AsyncMock()
-    persistence.load_data = AsyncMock()
-    return persistence
 
 
 class TestAnnouncementState:
@@ -113,44 +104,3 @@ class TestAnnouncementState:
         state.calendar_events["msg1"] = None
         assert not state.has_calendar_event("msg1")
 
-    @pytest.mark.asyncio
-    async def test_save(self, state, mock_persistence):
-        state.add_pending("msg1")
-        state.history.append("msg0")
-        state.set_calendar_event("msg2", "cal2")
-
-        await state.save(mock_persistence)
-
-        assert mock_persistence.save_data.call_count == 3
-        calls = mock_persistence.save_data.call_args_list
-        assert calls[0].args == ('pending', state.pending_requests)
-        assert calls[1].args == ('history', state.history)
-        assert calls[2].args == ('calendar', state.calendar_events)
-
-    @pytest.mark.asyncio
-    async def test_load(self, state, mock_persistence):
-        mock_persistence.load_data.side_effect = [
-            {'msg1': 'reply1'},
-            ['msg0'],
-            {'msg2': 'cal2'},
-        ]
-
-        await state.load(mock_persistence)
-
-        assert state.pending_requests == {'msg1': 'reply1'}
-        assert state.history == ['msg0']
-        assert state.calendar_events == {'msg2': 'cal2'}
-
-    @pytest.mark.asyncio
-    async def test_load_with_none_calendar_values(self, state, mock_persistence):
-        """Loading calendar_events with None values should work correctly."""
-        mock_persistence.load_data.side_effect = [
-            {},
-            [],
-            {'msg1': None, 'msg2': 'cal2'},
-        ]
-
-        await state.load(mock_persistence)
-
-        assert not state.has_calendar_event("msg1")
-        assert state.has_calendar_event("msg2")

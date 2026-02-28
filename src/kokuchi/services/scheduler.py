@@ -1,5 +1,4 @@
 import logging
-import uuid
 from datetime import datetime
 import pytz
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -33,25 +32,21 @@ class Scheduler:
         self.on_job_completion = callback
 
     async def schedule_announcement(self, timestamp, title, content, message_id, guild_id,
-                                    group_id=None,
+                                    group_id=None, channel_id=None,
                                     event_start_timestamp=None, event_end_timestamp=None, event_title=None):
         """Schedule an announcement for the given timestamp"""
-        # Clean up all existing jobs for the same message before scheduling a new one.
+        # Since job_id == message_id, there is at most one entry to remove.
         # Active (non-terminal) jobs are also unscheduled from APScheduler to prevent
         # a duplicate post when a restored pending job and a freshly-created job both
         # end up in APScheduler for the same message.
-        existing_ids = [
-            jid for jid, j in self.jobs.items()
-            if j.message_id == message_id
-        ]
-        for jid in existing_ids:
-            status = self.jobs[jid].status
-            if status not in TERMINAL_STATUSES:
-                self.unschedule_job(jid)
-            logger.info(f"Removing existing job {jid} (status={status}) for re-scheduled msg {message_id}")
-            del self.jobs[jid]
+        existing_job = self.jobs.get(message_id)
+        if existing_job:
+            if existing_job.status not in TERMINAL_STATUSES:
+                self.unschedule_job(message_id)
+            logger.info(f"Removing existing job {message_id} (status={existing_job.status}) for re-scheduled msg {message_id}")
+            del self.jobs[message_id]
 
-        job_id = str(uuid.uuid4())
+        job_id = message_id
         run_date = datetime.fromtimestamp(timestamp, tz=pytz.utc)
 
         logger.info(Messages.Log.SCHEDULING_JOB.format(run_date, job_id))
@@ -75,6 +70,7 @@ class Scheduler:
             message_id=message_id,
             guild_id=guild_id,
             group_id=group_id,
+            channel_id=channel_id,
             timestamp=timestamp,
             event_start_timestamp=event_start_timestamp,
             event_end_timestamp=event_end_timestamp,
@@ -255,10 +251,7 @@ class Scheduler:
 
     def get_job_by_message_id(self, message_id):
         """Get a job by message ID (any status). Returns None if not found."""
-        for job in self.jobs.values():
-            if job.message_id == message_id:
-                return job
-        return None
+        return self.jobs.get(message_id)
 
     def unschedule_job(self, job_id):
         """Remove a job from APScheduler without changing the job's status in self.jobs.
@@ -292,11 +285,7 @@ class Scheduler:
 
     def cancel_job_by_message_id(self, message_id):
         """Cancel a scheduled job by message ID"""
-        for job_id, job in list(self.jobs.items()):
-            if job.message_id == message_id:
-                return self.cancel_job(job_id)
-        logger.warning(f"Cannot cancel by message_id {message_id}: no matching job")
-        return False
+        return self.cancel_job(message_id)
 
     def mark_job_success(self, job_id):
         """Mark a job as successfully completed (for immediate posting)."""
