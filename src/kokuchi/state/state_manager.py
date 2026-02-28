@@ -1,5 +1,14 @@
+from __future__ import annotations
+
 import logging
+from typing import TYPE_CHECKING, Any
+
 from kokuchi.state.announcement_state import AnnouncementState
+
+if TYPE_CHECKING:
+    from kokuchi.services.scheduler import Scheduler
+    from kokuchi.services.vrchat_api import VRChatAPI
+    from kokuchi.state.persistence import Persistence
 
 logger = logging.getLogger(__name__)
 
@@ -11,7 +20,16 @@ class GuildContext:
     Created once per guild by StateManager and reused throughout the session.
     """
 
-    def __init__(self, guild_id, state, group_id, admin_role_id, enabled, channel_ids, state_manager):
+    def __init__(
+        self,
+        guild_id: str,
+        state: AnnouncementState,
+        group_id: str | None,
+        admin_role_id: str | None,
+        enabled: bool,
+        channel_ids: list[str],
+        state_manager: StateManager,
+    ) -> None:
         self.guild_id = guild_id
         self.state = state
         self.group_id = group_id
@@ -20,22 +38,22 @@ class GuildContext:
         self.channel_ids = channel_ids
         self._state_manager = state_manager
 
-    async def save_state(self):
+    async def save_state(self) -> None:
         """Save this guild's state to Firestore (bulk — all announcements)."""
         await self._state_manager.save_state(self.guild_id)
 
-    async def save_announcement(self, msg_id):
+    async def save_announcement(self, msg_id: str) -> None:
         """Save a single announcement document for this guild."""
         await self._state_manager.save_announcement(self.guild_id, msg_id)
 
-    async def load_state(self):
+    async def load_state(self) -> tuple[int, int, list[dict[str, Any]]]:
         """Load this guild's state from Firestore.
 
         Returns (restored_job_count, pending_count, skipped_jobs_list).
         """
         return await self._state_manager.load_state(self.guild_id)
 
-    async def cancel_announcement_detailed(self, message_id):
+    async def cancel_announcement_detailed(self, message_id: str) -> tuple[bool, bool]:
         """Cancel an announcement for this guild. Returns (success, deleted_calendar)."""
         return await self._state_manager.cancel_announcement_detailed(self.guild_id, message_id)
 
@@ -52,7 +70,13 @@ class StateManager:
     ``state_manager.scheduler`` rather than being passed separately.
     """
 
-    def __init__(self, scheduler, vrchat_api, guild_persistences, guild_configs):
+    def __init__(
+        self,
+        scheduler: Scheduler,
+        vrchat_api: VRChatAPI,
+        guild_persistences: dict[str, Persistence],
+        guild_configs: dict[str, dict],
+    ) -> None:
         """
         Args:
             scheduler: Scheduler instance (for job data persistence and cancel).
@@ -64,22 +88,22 @@ class StateManager:
         self.vrchat_api = vrchat_api
         self.guild_persistences = guild_persistences
         self.guild_configs = guild_configs
-        self.guild_states = {}  # guild_id -> AnnouncementState
-        self._guild_contexts = {}  # guild_id -> GuildContext (cached)
+        self.guild_states: dict[str, AnnouncementState] = {}
+        self._guild_contexts: dict[str, GuildContext] = {}
 
     # --- Accessors ---
 
-    def get_state(self, guild_id):
+    def get_state(self, guild_id: str) -> AnnouncementState:
         """Return (or lazily create) the AnnouncementState for a guild."""
         if guild_id not in self.guild_states:
             self.guild_states[guild_id] = AnnouncementState()
         return self.guild_states[guild_id]
 
-    def get_persistence(self, guild_id):
+    def get_persistence(self, guild_id: str) -> Persistence | None:
         """Return the Persistence for a guild."""
         return self.guild_persistences.get(guild_id)
 
-    def get_guild_context(self, guild_id):
+    def get_guild_context(self, guild_id: str) -> GuildContext:
         """Return a GuildContext with pre-resolved references for the given guild.
 
         Cached per guild_id so the same object is returned on repeated calls.
@@ -97,7 +121,7 @@ class StateManager:
             )
         return self._guild_contexts[guild_id]
 
-    def _get_group_id(self, guild_id):
+    def _get_group_id(self, guild_id: str) -> str | None:
         """Return the VRChat group_id for a guild."""
         guild_conf = self.guild_configs.get(guild_id)
         if guild_conf is None:
@@ -106,7 +130,7 @@ class StateManager:
 
     # --- State persistence ---
 
-    async def save_announcement(self, guild_id, msg_id):
+    async def save_announcement(self, guild_id: str, msg_id: str) -> None:
         """Save a single announcement document for a guild.
 
         Writes to servers/{server_id}/announcements/{msg_id} with the full
@@ -130,7 +154,7 @@ class StateManager:
         await persistence.save_announcement(msg_id, doc)
         logger.info(f"Saved announcement {msg_id} for guild {guild_id}")
 
-    async def save_state(self, guild_id=None):
+    async def save_state(self, guild_id: str | None = None) -> None:
         """Bulk save: write all known announcements for the given guild.
 
         If guild_id is None, saves all guilds. Used only on on_ready after
@@ -163,7 +187,7 @@ class StateManager:
 
             logger.info(f"State saved for guild {gid}: {len(msg_ids)} announcements")
 
-    async def load_state(self, guild_id):
+    async def load_state(self, guild_id: str) -> tuple[int, int, list[dict[str, Any]]]:
         """Load state from Firestore for a specific guild.
 
         Tries the new per-announcement format first; falls back to the old
@@ -180,7 +204,7 @@ class StateManager:
         announcements = await persistence.load_announcements()
         logger.info(f"Loading {len(announcements)} announcement documents for guild {guild_id}")
 
-        jobs_data = []
+        jobs_data: list[dict[str, Any]] = []
         for msg_id, doc in announcements.items():
             bot_reply_id = doc.get('bot_reply_id')
             calendar_event_id = doc.get('calendar_event_id')
@@ -224,7 +248,7 @@ class StateManager:
 
     # --- Composite operations ---
 
-    async def cancel_announcement(self, guild_id, message_id):
+    async def cancel_announcement(self, guild_id: str, message_id: str) -> bool:
         """Cancel an announcement by message ID.
 
         Orchestrates: scheduler cancel -> state cancel -> calendar deletion -> persist.
@@ -254,7 +278,7 @@ class StateManager:
 
         return True
 
-    async def cancel_announcement_detailed(self, guild_id, message_id):
+    async def cancel_announcement_detailed(self, guild_id: str, message_id: str) -> tuple[bool, bool]:
         """Like cancel_announcement but returns (success, deleted_calendar)."""
         logger.info(f"Cancelling announcement (detailed): guild={guild_id}, msg={message_id}")
 
@@ -278,7 +302,7 @@ class StateManager:
 
         return True, deleted_calendar
 
-    async def cancel_specific_job(self, guild_id, job_id):
+    async def cancel_specific_job(self, guild_id: str, job_id: str) -> tuple[bool, bool]:
         """Cancel a specific job by its exact job ID (not by message_id).
 
         Fixes the admin /cancel bug where cancel_job_by_message_id could cancel

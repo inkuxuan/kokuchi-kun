@@ -13,7 +13,7 @@ class AnnouncementState:
     Scheduler are the canonical records of completion.
     """
 
-    def __init__(self, max_history=1000):
+    def __init__(self, max_history: int = 1000) -> None:
         self.pending_requests: dict[str, str | None] = {}   # msg_id -> bot_reply_id
         self.queued_announcements: set[str] = set()
         self.history: list[str] = []

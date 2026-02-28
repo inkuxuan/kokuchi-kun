@@ -1,37 +1,44 @@
+from __future__ import annotations
+
 import discord
 from discord.ext import commands
 from discord import app_commands
 import logging
+from typing import TYPE_CHECKING
+
 from kokuchi.common.messages import Messages
 from kokuchi.common.version import get_version
+
+if TYPE_CHECKING:
+    from kokuchi.state.state_manager import StateManager
 
 logger = logging.getLogger(__name__)
 
 class AdminCog(commands.Cog):
-    def __init__(self, bot, config, state_manager):
+    def __init__(self, bot: commands.Bot, config: dict, state_manager: StateManager) -> None:
         self.bot = bot
         self.config = config
         self.state_manager = state_manager
 
         # Per-guild config lookup: guild_id (str) -> config dict
-        self.guild_configs = {}
+        self.guild_configs: dict[str, dict] = {}
         for guild_conf in config['discord'].get('guilds', []):
             gid = guild_conf['guild_id']  # str after normalization
             self.guild_configs[gid] = guild_conf
 
         # Flat set of all monitored channel IDs (str) for quick permission checks
-        self._all_channel_ids = set()
+        self._all_channel_ids: set[str] = set()
         for guild_conf in self.guild_configs.values():
             self._all_channel_ids.update(guild_conf.get('channel_ids', []))
 
-        self.prefix = config['discord']['prefix']
-        self.version = get_version()
+        self.prefix: str = config['discord']['prefix']
+        self.version: str = get_version()
 
-    def _get_guild_config(self, guild_id):
+    def _get_guild_config(self, guild_id: str) -> dict | None:
         """Return the config for a guild, or None if not configured."""
         return self.guild_configs.get(guild_id)
 
-    async def cog_check(self, ctx):
+    async def cog_check(self, ctx: commands.Context) -> bool:
         """Permission check that applies to all commands in this cog"""
         # Check if in one of the monitored channels
         if str(ctx.channel.id) not in self._all_channel_ids:
@@ -53,7 +60,7 @@ class AdminCog(commands.Cog):
         name="list",
         description="List all scheduled announcements"
     )
-    async def list_jobs(self, ctx):
+    async def list_jobs(self, ctx: commands.Context) -> None:
         """List all scheduled announcements for the current guild"""
         guild_id = str(ctx.guild.id)
         jobs = self.state_manager.scheduler.list_jobs(guild_id=guild_id)
@@ -85,7 +92,7 @@ class AdminCog(commands.Cog):
         name="cancel",
         description="Cancel a scheduled announcement"
     )
-    async def cancel_job(self, ctx, message_id: str):
+    async def cancel_job(self, ctx: commands.Context, message_id: str) -> None:
         """Cancel a scheduled announcement by message ID"""
         # Verify the job belongs to this guild before cancelling
         guild_id = str(ctx.guild.id)
@@ -128,7 +135,7 @@ class AdminCog(commands.Cog):
         name="help",
         description="Display admin command help"
     )
-    async def help_command(self, ctx):
+    async def help_command(self, ctx: commands.Context) -> None:
         """Display help information"""
         embed = discord.Embed(
             title=Messages.Discord.CMD_LIST_TITLE,
@@ -145,7 +152,7 @@ class AdminCog(commands.Cog):
 
         await ctx.reply(embed=embed)
 
-    async def cog_app_command_error(self, interaction, error):
+    async def cog_app_command_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError) -> None:
         """Handle errors from slash commands"""
         if isinstance(error, app_commands.errors.CheckFailure):
             await interaction.response.send_message(Messages.Discord.NO_PERMISSION, ephemeral=True)

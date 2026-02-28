@@ -1,7 +1,12 @@
+from __future__ import annotations
+
 import logging
-import vrchatapi
+from collections.abc import Callable
 from datetime import datetime
+from typing import Any, TYPE_CHECKING
+
 import pytz
+import vrchatapi
 from vrchatapi.api.authentication_api import AuthenticationApi
 from vrchatapi.api.groups_api import GroupsApi
 from vrchatapi.exceptions import UnauthorizedException, ApiException
@@ -11,24 +16,27 @@ from vrchatapi.models.two_factor_email_code import TwoFactorEmailCode
 from kokuchi.common.messages import Messages
 from kokuchi.common.models import AuthResult, ApiResult
 
+if TYPE_CHECKING:
+    from kokuchi.state.persistence import Persistence
+
 logger = logging.getLogger(__name__)
 
 class VRChatAPI:
-    def __init__(self, config, persistence):
+    def __init__(self, config: dict, persistence: Persistence) -> None:
         """Initialize with configuration but don't connect yet"""
-        self.username = config['username']
-        self.password = config['password']
-        self.authenticated = False
-        self.api_client = None
-        self.current_user = None
+        self.username: str = config['username']
+        self.password: str = config['password']
+        self.authenticated: bool = False
+        self.api_client: vrchatapi.ApiClient | None = None
+        self.current_user: Any = None
         self.persistence = persistence
-        self.failed_posts = []  # Store failed posts for retry
-        self.otp_callback = None  # Callback function to request OTP
-    
-    def set_otp_callback(self, callback):
+        self.failed_posts: list[dict[str, str]] = []  # Store failed posts for retry
+        self.otp_callback: Callable[[str], Any] | None = None  # Callback function to request OTP
+
+    def set_otp_callback(self, callback: Callable[[str], Any]) -> None:
         """Set the callback function to request OTP"""
         self.otp_callback = callback
-    
+
     async def initialize(self) -> AuthResult:
         """Initialize and authenticate with VRChat"""
         # Try to authenticate with saved cookies first
@@ -49,8 +57,8 @@ class VRChatAPI:
 
         # Fall back to username/password auth with OTP
         return await self._authenticate_with_credentials()
-    
-    async def _try_cookie_auth(self):
+
+    async def _try_cookie_auth(self) -> bool:
         """Try to authenticate using saved cookies from Firestore"""
         logger.info(Messages.Log.COOKIE_AUTH_ATTEMPT)
 
@@ -63,22 +71,22 @@ class VRChatAPI:
 
             auth_cookie = cookie_data.get('authCookie')
             two_factor_cookie = cookie_data.get('twoFactorAuthCookie')
-            
+
             if not auth_cookie:
                 logger.warning(Messages.Log.NO_AUTH_COOKIE)
                 return False
-                
+
             # Create a basic configuration
             configuration = vrchatapi.Configuration()
-            
+
             # Create a new API client
             self.api_client = vrchatapi.ApiClient(configuration)
             self.api_client.user_agent = Messages.Const.VRC_USER_AGENT
-            
+
             # Create and set cookies directly in the cookie jar
             from http.cookiejar import Cookie
-            
-            def make_cookie(name, value):
+
+            def make_cookie(name: str, value: str) -> Cookie:
                 return Cookie(
                     0,                  # version
                     name,               # name
@@ -97,25 +105,25 @@ class VRChatAPI:
                     None,               # comment_url
                     {}                  # rest
                 )
-            
+
             # Set the auth cookie
             self.api_client.rest_client.cookie_jar.set_cookie(
                 make_cookie("auth", auth_cookie)
             )
-            
+
             # Set the 2FA cookie if available
             if two_factor_cookie:
                 self.api_client.rest_client.cookie_jar.set_cookie(
                     make_cookie("twoFactorAuth", two_factor_cookie)
                 )
-            
+
             # Try to get current user to validate cookie
             auth_api = AuthenticationApi(self.api_client)
-            
+
             try:
                 self.current_user = auth_api.get_current_user()
                 self.authenticated = True
-                
+
                 logger.info(Messages.Log.COOKIE_AUTH_SUCCESS.format(self.current_user.display_name))
                 return True
             except UnauthorizedException as e:
@@ -124,7 +132,7 @@ class VRChatAPI:
             except ApiException as e:
                 logger.warning(Messages.Log.COOKIE_AUTH_FAIL_API.format(str(e)))
                 return False
-            
+
         except Exception as e:
             logger.warning(Messages.Log.COOKIE_AUTH_FAIL.format(str(e)))
             # Clean up if cookie auth failed
@@ -134,14 +142,14 @@ class VRChatAPI:
             self.authenticated = False
             self.current_user = None
             return False
-    
-    async def _save_cookies(self):
+
+    async def _save_cookies(self) -> bool:
         """Save authentication cookies to Firestore"""
         if not self.api_client or not self.authenticated:
             return False
 
         try:
-            cookies = {}
+            cookies: dict[str, str] = {}
 
             # Extract cookies properly from the cookie jar
             # This matches how the official example accesses cookies
@@ -172,8 +180,8 @@ class VRChatAPI:
         except Exception as e:
             logger.error(Messages.Log.COOKIE_SAVE_FAIL.format(str(e)))
             return False
-    
-    async def _invalidate_cookies(self):
+
+    async def _invalidate_cookies(self) -> None:
         """Invalidate cached session cookies in Firestore and reset auth state"""
         await self.persistence.save_shared('vrchat_session', {})
         if self.api_client:
@@ -205,7 +213,7 @@ class VRChatAPI:
             await self._save_cookies()
 
         return result
-    
+
     async def _authenticate(self) -> AuthResult:
         """Internal method to authenticate with VRChat - interactive for 2FA"""
         if not self.api_client:
@@ -242,7 +250,7 @@ class VRChatAPI:
             logger.error(Messages.Log.AUTH_UNEXPECTED_ERROR.format(str(e)))
             return AuthResult(success=False, error=Messages.Error.UNEXPECTED_ERROR.format(str(e)))
 
-    async def _handle_2fa(self, auth_api, exc) -> AuthResult:
+    async def _handle_2fa(self, auth_api: AuthenticationApi, exc: UnauthorizedException) -> AuthResult:
         """Handle 2FA challenge during authentication."""
         otp_type, verify_method = self._detect_2fa_type(auth_api, exc)
 
@@ -253,7 +261,9 @@ class VRChatAPI:
 
         return self._verify_after_2fa(auth_api)
 
-    def _detect_2fa_type(self, auth_api, exc):
+    def _detect_2fa_type(
+        self, auth_api: AuthenticationApi, exc: UnauthorizedException
+    ) -> tuple[str | None, Callable | None]:
         """Detect 2FA type from the UnauthorizedException and return (otp_type, verify_method)."""
         if "Email 2 Factor Authentication" in exc.reason:
             return "Email 2FA", auth_api.verify2_fa_email_code
@@ -261,7 +271,7 @@ class VRChatAPI:
             return "TOTP 2FA", auth_api.verify2_fa
         return None, None
 
-    async def _run_otp_loop(self, otp_type, verify_method) -> AuthResult:
+    async def _run_otp_loop(self, otp_type: str, verify_method: Callable) -> AuthResult:
         """Request and verify OTP in a retry loop."""
         if not self.otp_callback:
             return AuthResult(success=False, error=Messages.Error.OTP_CALLBACK_NOT_SET)
@@ -293,7 +303,7 @@ class VRChatAPI:
                 logger.error(log_msg.format(str(e)))
                 return AuthResult(success=False, error=err_msg.format(str(e)))
 
-    def _verify_after_2fa(self, auth_api) -> AuthResult:
+    def _verify_after_2fa(self, auth_api: AuthenticationApi) -> AuthResult:
         """After completing 2FA, verify the user is authenticated."""
         try:
             self.current_user = auth_api.get_current_user()
@@ -308,7 +318,7 @@ class VRChatAPI:
         except ApiException as e:
             logger.error(Messages.Log.ERROR_AFTER_2FA.format(str(e)))
             return AuthResult(success=False, error=Messages.Error.AUTH_FAIL_AFTER_2FA.format(str(e)))
-    
+
     async def authenticate(self) -> AuthResult:
         """Public method to authenticate or re-authenticate"""
         return await self._authenticate()
@@ -356,7 +366,7 @@ class VRChatAPI:
             logger.error(Messages.Log.HEARTBEAT_FAIL.format(e))
             return AuthResult(success=False, error=str(e))
 
-    async def _with_auth_retry(self, operation_name, fn) -> ApiResult:
+    async def _with_auth_retry(self, operation_name: str, fn: Callable[[], ApiResult]) -> ApiResult:
         """Execute fn with automatic re-auth retry on UnauthorizedException."""
         if not self.authenticated or not self.api_client:
             return ApiResult(success=False, error=Messages.Error.NOT_AUTHENTICATED)
@@ -379,18 +389,18 @@ class VRChatAPI:
             logger.error(f"Error in {operation_name}: {e}")
             return ApiResult(success=False, error=str(e))
 
-    async def get_group(self, group_id) -> ApiResult:
+    async def get_group(self, group_id: str) -> ApiResult:
         """Get group info by ID"""
-        def _do_get():
+        def _do_get() -> ApiResult:
             groups_api = GroupsApi(self.api_client)
             group = groups_api.get_group(group_id=group_id)
             return ApiResult(success=True, data={"group": group, "name": group.name})
 
         return await self._with_auth_retry("Get Group", _do_get)
 
-    async def post_announcement(self, group_id, title, content) -> ApiResult:
+    async def post_announcement(self, group_id: str | None, title: str, content: str) -> ApiResult:
         """Post in the group with notification"""
-        def _do_post():
+        def _do_post() -> ApiResult:
             groups_api = GroupsApi(self.api_client)
             logger.info(Messages.Log.POST_GROUP.format(group_id))
             group_post = groups_api.add_group_post(
@@ -411,7 +421,14 @@ class VRChatAPI:
 
         return result
 
-    async def create_group_calendar_event(self, group_id, title, content, start_at, end_at) -> ApiResult:
+    async def create_group_calendar_event(
+        self,
+        group_id: str,
+        title: str,
+        content: str,
+        start_at: float | datetime,
+        end_at: float | datetime,
+    ) -> ApiResult:
         """Create a group calendar event"""
         from vrchatapi.api.calendar_api import CalendarApi
         from vrchatapi.models.calendar_event_access import CalendarEventAccess
@@ -441,7 +458,7 @@ class VRChatAPI:
             send_creation_notification=False,
         )
 
-        def _do_create():
+        def _do_create() -> ApiResult:
             calendar_api = CalendarApi(self.api_client)
             event = calendar_api.create_group_calendar_event(
                 group_id=group_id,
@@ -451,13 +468,13 @@ class VRChatAPI:
 
         return await self._with_auth_retry("Create Calendar Event", _do_create)
 
-    async def delete_group_calendar_event(self, group_id, calendar_event_id) -> ApiResult:
+    async def delete_group_calendar_event(self, group_id: str, calendar_event_id: str) -> ApiResult:
         """Delete a group calendar event"""
         from vrchatapi.api.calendar_api import CalendarApi
 
         logger.info(f"Deleting calendar event: {calendar_event_id}")
 
-        def _do_delete():
+        def _do_delete() -> ApiResult:
             calendar_api = CalendarApi(self.api_client)
             calendar_api.delete_group_calendar_event(
                 group_id=group_id,
@@ -467,21 +484,21 @@ class VRChatAPI:
 
         return await self._with_auth_retry("Delete Calendar Event", _do_delete)
 
-    async def retry_failed_posts(self):
+    async def retry_failed_posts(self) -> list[ApiResult]:
         """Retry all failed posts"""
         if not self.failed_posts:
             return []
-            
-        results = []
+
+        results: list[ApiResult] = []
         for post in self.failed_posts:
             result = await self.post_announcement(post["group_id"], post["title"], post["content"])
             results.append(result)
-            
+
         # Clear failed posts after retry
         self.failed_posts = []
         return results
-    
-    async def delete_post(self, group_id, notification_id) -> ApiResult:
+
+    async def delete_post(self, group_id: str, notification_id: str) -> ApiResult:
         """Delete a post"""
         if not self.authenticated or not self.api_client:
             return ApiResult(success=False, error=Messages.Error.NOT_AUTHENTICATED)
@@ -501,8 +518,8 @@ class VRChatAPI:
         except Exception as e:
             logger.error(Messages.Log.DELETE_POST_ERROR.format(e))
             return ApiResult(success=False, error=str(e))
-    
-    def close(self):
+
+    def close(self) -> None:
         """Close the API client"""
         if self.api_client:
             self.api_client.close()

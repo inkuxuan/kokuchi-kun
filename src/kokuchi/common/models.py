@@ -50,11 +50,11 @@ class JobData:
     event_title: str | None = None
     formatted_date_time: str | None = None
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, d: dict) -> "JobData":
+    def from_dict(cls, d: dict[str, Any]) -> "JobData":
         return cls(
             id=d["id"],
             message_id=d["message_id"],

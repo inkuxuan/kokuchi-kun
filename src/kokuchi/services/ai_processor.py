@@ -50,14 +50,14 @@ def _sanitize_datetime(date_str: str, time_str: str) -> tuple[str, str]:
 
 
 class AIProcessor:
-    def __init__(self, config):
+    def __init__(self, config: dict) -> None:
         self.api_key = config['api_key']
         self.model = config['model']
         self.prompt = config['prompt']
         openai.api_key = self.api_key
         openai.api_base = "https://openrouter.ai/api/v1"
-        
-    async def process_announcement(self, message_content) -> AIProcessingResult:
+
+    async def process_announcement(self, message_content: str) -> AIProcessingResult:
         """Process the announcement message and extract details"""
         try:
             logger.info(Messages.Log.AI_PROCESSING)
