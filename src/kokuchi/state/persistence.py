@@ -1,20 +1,26 @@
 import logging
+from typing import Any
 from google.cloud.firestore_v1 import AsyncClient
 
 logger = logging.getLogger(__name__)
 
 
 class Persistence:
-    def __init__(self, server_id='default', servers_collection='servers',
-                 shared_collection='shared', state_subcollection='state',
-                 database=None):
+    def __init__(
+        self,
+        server_id: str = 'default',
+        servers_collection: str = 'servers',
+        shared_collection: str = 'shared',
+        state_subcollection: str = 'state',
+        database: str | None = None,
+    ) -> None:
         self.server_id = server_id
         self.servers_collection = servers_collection
         self.shared_collection = shared_collection
         self.state_subcollection = state_subcollection
         self.db = AsyncClient(database=database) if database else AsyncClient()
 
-    async def save_data(self, key, data):
+    async def save_data(self, key: str, data: Any) -> bool:
         """Save per-server state to Firestore.
 
         Data is stored at {servers_collection}/{server_id}/{state_subcollection}/{key}.
@@ -32,7 +38,7 @@ class Persistence:
             logger.error(f"Failed to save {key}: {e}")
             return False
 
-    async def load_data(self, key, default=None):
+    async def load_data(self, key: str, default: Any = None) -> Any:
         """Load per-server state from Firestore."""
         if default is None:
             default = {}
@@ -52,7 +58,7 @@ class Persistence:
             logger.error(f"Failed to load {key}: {e}")
             return default
 
-    async def save_shared(self, key, data):
+    async def save_shared(self, key: str, data: dict) -> bool:
         """Save shared state (not scoped to a server) to Firestore.
 
         Data is stored at {shared_collection}/{key}.
@@ -65,7 +71,7 @@ class Persistence:
             logger.error(f"Failed to save shared {key}: {e}")
             return False
 
-    async def load_shared(self, key, default=None):
+    async def load_shared(self, key: str, default: dict | None = None) -> dict:
         """Load shared state from Firestore."""
         if default is None:
             default = {}
@@ -95,7 +101,7 @@ class Persistence:
             logger.error(f"Failed to save announcement {msg_id}: {e}")
             return False
 
-    async def load_announcements(self) -> dict:
+    async def load_announcements(self) -> dict[str, dict]:
         """Stream all docs from servers/{server_id}/announcements/.
 
         Returns {msg_id: doc_dict}.
@@ -106,7 +112,7 @@ class Persistence:
                 .document(self.server_id)
                 .collection('announcements')
             )
-            result = {}
+            result: dict[str, dict] = {}
             async for doc in col_ref.stream():
                 result[doc.id] = doc.to_dict()
             return result

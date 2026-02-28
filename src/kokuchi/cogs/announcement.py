@@ -1,14 +1,23 @@
+from __future__ import annotations
+
 import logging
 import discord
 from discord.ext import commands
 from discord import app_commands
 import time
+from typing import Any, TYPE_CHECKING
 from kokuchi.common.messages import Messages
+
+if TYPE_CHECKING:
+    from kokuchi.state.state_manager import StateManager, GuildContext
+    from kokuchi.services.vrchat_api import VRChatAPI
+    from kokuchi.services.ai_processor import AIProcessor
+    from kokuchi.common.models import AIProcessingResult
 
 logger = logging.getLogger(__name__)
 
 class AnnouncementCog(commands.Cog):
-    def __init__(self, bot, config, ai_processor, state_manager, vrchat_api):
+    def __init__(self, bot: commands.Bot, config: dict, ai_processor: AIProcessor, state_manager: StateManager, vrchat_api: VRChatAPI) -> None:
         self.bot = bot
         self.config = config
         self.ai_processor = ai_processor
@@ -16,31 +25,31 @@ class AnnouncementCog(commands.Cog):
         self.vrchat_api = vrchat_api
 
         # Per-guild config lookup: guild_id (str) -> config dict
-        self.guild_configs = {}
+        self.guild_configs: dict[str, dict] = {}
         for guild_conf in config['discord'].get('guilds', []):
             gid = guild_conf['guild_id']  # str after normalization
             self.guild_configs[gid] = guild_conf
 
         # Build flat set of all monitored channel IDs for quick lookup
-        self._all_channel_ids = set()
+        self._all_channel_ids: set[str] = set()
         for guild_conf in self.guild_configs.values():
             self._all_channel_ids.update(guild_conf.get('channel_ids', []))
 
         # Global emoji config (shared across guilds)
-        self.seen_emoji = config['discord'].get('seen_reaction_emoji', "👀")
-        self.approval_emoji = config['discord'].get('approval_reaction_emoji', "👍")
-        self.fast_forward_emoji = config['discord'].get('fast_forward_emoji', "⏩")
-        self.calendar_emoji = config['discord'].get('calendar_emoji', "📅")
+        self.seen_emoji: str = config['discord'].get('seen_reaction_emoji', "👀")
+        self.approval_emoji: str = config['discord'].get('approval_reaction_emoji', "👍")
+        self.fast_forward_emoji: str = config['discord'].get('fast_forward_emoji', "⏩")
+        self.calendar_emoji: str = config['discord'].get('calendar_emoji', "📅")
 
         # Admin user ID (receives config warnings)
-        self.admin_id = config['discord'].get('admin_id')
+        self.admin_id: str | None = config['discord'].get('admin_id')
 
         # Set up job completion callback
         self.state_manager.scheduler.set_on_job_completion(self._on_job_complete)
 
     # --- Callbacks ---
 
-    async def _on_job_complete(self, job_data):
+    async def _on_job_complete(self, job_data: dict[str, Any]) -> None:
         """Callback for when a job completes (success or failure)"""
         try:
             message_id = job_data.get('message_id')
@@ -67,7 +76,7 @@ class AnnouncementCog(commands.Cog):
 
     # --- Missed reaction warning ---
 
-    async def _warn_missed_reactions(self, gctx):
+    async def _warn_missed_reactions(self, gctx: GuildContext) -> None:
         """Warn about reactions that may have been added while the bot was offline.
 
         Rather than automatically acting on missed reactions (which could be
@@ -136,7 +145,7 @@ class AnnouncementCog(commands.Cog):
     # --- Message listener ---
 
     @commands.Cog.listener()
-    async def on_ready(self):
+    async def on_ready(self) -> None:
         """Called when the bot is ready"""
         try:
             # Validate configured channel IDs
@@ -183,7 +192,7 @@ class AnnouncementCog(commands.Cog):
             logger.error(f"Error during announcement cog initialization: {e}", exc_info=True)
 
     @commands.Cog.listener()
-    async def on_message(self, message):
+    async def on_message(self, message: discord.Message) -> None:
         """Process messages in the announcement channels"""
         if message.author.bot:
             return
@@ -212,7 +221,7 @@ class AnnouncementCog(commands.Cog):
                 return
             await self._handle_announcement_request(message, gctx)
 
-    async def _handle_announcement_request(self, message, gctx):
+    async def _handle_announcement_request(self, message: discord.Message, gctx: GuildContext) -> None:
         """Handle a new announcement request"""
         try:
             msg_id = str(message.id)
@@ -246,7 +255,7 @@ class AnnouncementCog(commands.Cog):
     # --- Dispatchers ---
 
     @commands.Cog.listener()
-    async def on_raw_reaction_add(self, payload):
+    async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent) -> None:
         """Dispatcher: route reaction-add events to the appropriate handler.
 
         All filtering, guard checks, permission checks, and Discord object
@@ -433,7 +442,7 @@ class AnnouncementCog(commands.Cog):
                 )
 
     @commands.Cog.listener()
-    async def on_raw_message_delete(self, payload):
+    async def on_raw_message_delete(self, payload: discord.RawMessageDeleteEvent) -> None:
         """Dispatcher: cancel a scheduled announcement when its request message is deleted."""
         if payload.guild_id is None:
             return
@@ -458,7 +467,7 @@ class AnnouncementCog(commands.Cog):
             await self._cancel_announcement_on_delete(msg_id, channel, gctx)
 
     @commands.Cog.listener()
-    async def on_raw_reaction_remove(self, payload):
+    async def on_raw_reaction_remove(self, payload: discord.RawReactionActionEvent) -> None:
         """Dispatcher: route reaction-remove events to the appropriate handler.
 
         All filtering, guard checks, permission checks, and Discord object
@@ -554,25 +563,25 @@ class AnnouncementCog(commands.Cog):
 
     # --- Log formatting helpers ---
 
-    def _guild_log(self, guild) -> str:
+    def _guild_log(self, guild: discord.Guild | None) -> str:
         """Format guild for logging: 'id/name'."""
         if guild is None:
             return "unknown"
         return f"{guild.id}/{guild.name!r}"
 
-    def _channel_log(self, channel) -> str:
+    def _channel_log(self, channel: discord.abc.GuildChannel | None) -> str:
         """Format channel for logging: 'id/#name'."""
         if channel is None:
             return "unknown"
         return f"{channel.id}/#{channel.name}"
 
-    def _user_log(self, user_or_member) -> str:
+    def _user_log(self, user_or_member: discord.User | discord.Member | None) -> str:
         """Format a User or Member for logging: 'id/name'."""
         if user_or_member is None:
             return "unknown"
         return f"{user_or_member.id}/{user_or_member.name!r}"
 
-    def _user_id_log(self, user_id) -> str:
+    def _user_id_log(self, user_id: int | None) -> str:
         """Format a user ID for logging, resolving the name from cache when available."""
         if user_id is None:
             return "unknown"
@@ -583,7 +592,7 @@ class AnnouncementCog(commands.Cog):
 
     # --- Permission helpers ---
 
-    async def _fetch_member_safe(self, channel, user_id):
+    async def _fetch_member_safe(self, channel: discord.TextChannel, user_id: int) -> discord.Member | None:
         """Fetch a guild member, returning None on failure."""
         try:
             return await channel.guild.fetch_member(user_id)
@@ -594,7 +603,7 @@ class AnnouncementCog(commands.Cog):
             )
             return None
 
-    def _is_admin(self, member, admin_role_id) -> bool:
+    def _is_admin(self, member: discord.Member | None, admin_role_id: str | None) -> bool:
         """Check if a member has the admin role."""
         if not member or admin_role_id is None:
             return False
@@ -602,7 +611,7 @@ class AnnouncementCog(commands.Cog):
 
     # --- Handlers (pure business logic — no filtering, guards, or permission checks) ---
 
-    async def _remove_calendar_event(self, request_msg_id, channel, gctx):
+    async def _remove_calendar_event(self, request_msg_id: str, channel: discord.TextChannel, gctx: GuildContext) -> None:
         """Remove a VRChat calendar event and persist the state change."""
         calendar_event_id = gctx.state.remove_calendar_event(request_msg_id)
         logger.info(
@@ -624,7 +633,7 @@ class AnnouncementCog(commands.Cog):
             )
             await channel.send(result.error)
 
-    async def _cancel_announcement_on_delete(self, msg_id, channel, gctx):
+    async def _cancel_announcement_on_delete(self, msg_id: str, channel: discord.TextChannel, gctx: GuildContext) -> None:
         """Cancel an approved announcement when its original request message was deleted."""
         bot_reply_id = gctx.state.get_bot_reply_id(msg_id)
         if bot_reply_id:
@@ -657,7 +666,7 @@ class AnnouncementCog(commands.Cog):
 
         await channel.send(Messages.Discord.BOOKING_CANCELLED)
 
-    async def _cancel_approved_announcement(self, msg_id, message, channel, gctx):
+    async def _cancel_approved_announcement(self, msg_id: str, message: discord.Message, channel: discord.TextChannel, gctx: GuildContext) -> None:
         """Cancel an approved announcement: delete bot reply, cancel job, notify."""
         # Delete the bot reply message before cancelling
         bot_reply_id = gctx.state.get_bot_reply_id(msg_id)
@@ -692,7 +701,7 @@ class AnnouncementCog(commands.Cog):
 
         await message.reply(Messages.Discord.BOOKING_CANCELLED)
 
-    async def _process_calendar_event_creation(self, message, channel, gctx):
+    async def _process_calendar_event_creation(self, message: discord.Message, channel: discord.TextChannel, gctx: GuildContext) -> None:
         """Process the creation of a VRChat calendar event"""
         try:
             job = self.state_manager.scheduler.get_job_by_message_id(str(message.id))
@@ -763,7 +772,7 @@ class AnnouncementCog(commands.Cog):
             )
             await channel.send(Messages.Discord.ERROR_OCCURRED.format(str(e)))
 
-    async def _process_immediate_post(self, request_msg_id, channel_id, processing_msg_id, gctx):
+    async def _process_immediate_post(self, request_msg_id: str, channel_id: int, processing_msg_id: int, gctx: GuildContext) -> None:
         """Process an immediate post request (fast-forward)"""
         scheduler = self.state_manager.scheduler
 
@@ -841,11 +850,11 @@ class AnnouncementCog(commands.Cog):
             await gctx.save_announcement(request_msg_id)
             await channel.send(Messages.Discord.IMMEDIATE_POST_FAIL.format(str(e)))
 
-    def _is_timestamp_too_old(self, timestamp) -> bool:
+    def _is_timestamp_too_old(self, timestamp: float) -> bool:
         """Check if a timestamp is more than misfire_grace_time seconds in the past."""
         return timestamp < time.time() - self.state_manager.scheduler.misfire_grace_time
 
-    def _build_booking_embed(self, result, job_id) -> discord.Embed:
+    def _build_booking_embed(self, result: AIProcessingResult, job_id: str) -> discord.Embed:
         """Build the confirmation embed for a booked announcement."""
         embed = discord.Embed(
             title=Messages.Discord.BOOKING_COMPLETED_TITLE,
@@ -866,7 +875,7 @@ class AnnouncementCog(commands.Cog):
 
         return embed
 
-    async def _process_approved_announcement(self, message, gctx):
+    async def _process_approved_announcement(self, message: discord.Message, gctx: GuildContext) -> None:
         """Process an approved announcement request"""
         try:
             # Send processing message
@@ -908,6 +917,7 @@ class AnnouncementCog(commands.Cog):
                 str(message.id),
                 guild_id=gctx.guild_id,
                 group_id=gctx.group_id,
+                channel_id=str(message.channel.id),
                 event_start_timestamp=result.event_start_timestamp,
                 event_end_timestamp=result.event_end_timestamp,
                 event_title=result.event_title,

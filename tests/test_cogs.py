@@ -111,6 +111,8 @@ class TestCogs:
         persistence.save_data = AsyncMock(return_value=True)
         persistence.load_shared = AsyncMock(return_value={})
         persistence.save_shared = AsyncMock(return_value=True)
+        persistence.save_announcement = AsyncMock(return_value=True)
+        persistence.load_announcements = AsyncMock(return_value={})
         return persistence
 
     @pytest.fixture
@@ -222,11 +224,11 @@ class TestCogs:
 
         await admin_cog.cancel_job(admin_cog, mock_context, "job1")
 
-        # Verify cancel_job_by_message_id was called via state_manager
-        admin_cog.state_manager.scheduler.cancel_job_by_message_id.assert_called_once_with('123456789')
+        # Verify cancel_job was called with the exact job_id
+        admin_cog.state_manager.scheduler.cancel_job.assert_called_with("job1")
 
         # Verify persistence save was called
-        mock_persistence.save_data.assert_called()
+        mock_persistence.save_announcement.assert_called()
 
         # Verify success message
         mock_context.reply.assert_called_once()
@@ -323,7 +325,7 @@ class TestCogs:
         guild_id = str(mock_message.guild.id)
         assert announcement_cog.state_manager.get_state(guild_id).is_pending(str(mock_message.id))
 
-        mock_persistence.save_data.assert_called()
+        mock_persistence.save_announcement.assert_called()
 
     @pytest.mark.asyncio
     async def test_announcement_approval(self, announcement_cog, mock_message, mock_admin_member):
@@ -372,12 +374,16 @@ class TestCogs:
     @pytest.mark.asyncio
     async def test_restoration_on_ready(self, announcement_cog, mock_persistence):
         """Test restoration logic on bot ready."""
-        mock_persistence.load_data.side_effect = [
-            {'123': None}, # pending
-            ['456'],       # history
-            {},            # calendar
-            [{'id': 'job1', 'timestamp': 1000}] # jobs
-        ]
+        str_guild_id = str(TEST_GUILD_ID)
+        mock_persistence.load_announcements.return_value = {
+            '123': {
+                'guild_id': str_guild_id,
+                'bot_reply_id': None,
+                'calendar_event_id': None,
+                'completed': False,
+                'job': None,
+            }
+        }
 
         skipped_job = {'id': 'job2', 'title': 'Skipped Job', 'timestamp': 900}
         announcement_cog.state_manager.scheduler.restore_jobs.return_value = (1, [skipped_job])
@@ -388,8 +394,8 @@ class TestCogs:
 
         await announcement_cog.on_ready()
 
-        assert mock_persistence.load_data.call_count == 4
-        mock_persistence.save_data.assert_called()
+        mock_persistence.load_announcements.assert_called_once()
+        mock_persistence.save_announcement.assert_called()
         announcement_cog.state_manager.scheduler.restore_jobs.assert_called_once()
 
         assert channel.send.call_count == 2
@@ -412,7 +418,7 @@ class TestCogs:
 
         assert announcement_cog.state_manager.get_state(str_guild_id).is_in_history('msg123')
         assert not announcement_cog.state_manager.get_state(str_guild_id).is_queued('msg123')
-        mock_persistence.save_data.assert_called()
+        mock_persistence.save_announcement.assert_called()
 
     @pytest.mark.asyncio
     async def test_process_approved_announcement_past_time_warning(self, announcement_cog, mock_message):

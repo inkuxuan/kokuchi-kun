@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import logging
 import warnings
@@ -26,7 +28,7 @@ from kokuchi.cogs.auth import AuthCog
 from kokuchi.cogs.general import GeneralCog
 from kokuchi.common.messages import Messages
 
-def ensure_config_exists():
+def ensure_config_exists() -> None:
     """Create config.yaml from template if it is missing, then exit so the user can fill it in."""
     if not os.path.exists('config.yaml'):
         if os.path.exists('config.yaml.template'):
@@ -38,7 +40,7 @@ def ensure_config_exists():
         sys.exit(1)
 
 
-def ensure_env_exists(env_file):
+def ensure_env_exists(env_file: str) -> None:
     """Create the env file from .prd.env.template if it is missing, then exit so the user can fill it in."""
     if not os.path.exists(env_file):
         template = '.prd.env.template'
@@ -52,14 +54,14 @@ def ensure_env_exists(env_file):
 
 
 # Parse command-line arguments
-def parse_arguments():
+def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description='VRChat Announce Discord Bot')
     parser.add_argument('--env', type=str, default='.env',
                       help='Environment file to load (default: .env)')
     return parser.parse_args()
 
 # Load environment variables from specified file
-def load_environment(env_file):
+def load_environment(env_file: str) -> bool:
     if os.path.exists(env_file):
         logger.info(Messages.Log.LOADING_ENV.format(env_file))
         load_dotenv(env_file)
@@ -81,7 +83,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 class VRChatAnnounceBot(commands.Bot):
-    def __init__(self, config, args):
+    def __init__(self, config: dict, args: argparse.Namespace) -> None:
         intents = discord.Intents.default()
         intents.message_content = True
         intents.reactions = True
@@ -138,7 +140,7 @@ class VRChatAnnounceBot(commands.Bot):
             self.heartbeat_check.change_interval(minutes=heartbeat_interval)
             self.heartbeat_check.start()
 
-    def _normalize_config(self):
+    def _normalize_config(self) -> None:
         """Validate config and normalize all IDs to str."""
         discord_conf = self.config.get('discord', {})
 
@@ -168,7 +170,7 @@ class VRChatAnnounceBot(commands.Bot):
 
         self.config['discord'] = discord_conf
 
-    def _build_guild_persistences(self):
+    def _build_guild_persistences(self) -> dict[str, Persistence]:
         """Build a mapping of guild_id (str) -> Persistence for each configured guild."""
         firestore_config = self.config.get('firestore', {})
         persistences = {}
@@ -184,7 +186,7 @@ class VRChatAnnounceBot(commands.Bot):
             )
         return persistences
 
-    def _load_env_variables(self):
+    def _load_env_variables(self) -> None:
         """Load sensitive data from environment variables into config"""
         # Discord
         self.config['discord']['token'] = os.getenv('DISCORD_TOKEN')
@@ -202,7 +204,7 @@ class VRChatAnnounceBot(commands.Bot):
         self.config['vrchat']['password'] = os.getenv('VRCHAT_PASSWORD')
         # group_id is now loaded from config.yaml
 
-    async def setup_hook(self):
+    async def setup_hook(self) -> None:
         """Set up the bot's components"""
         try:
             # Add cogs
@@ -218,7 +220,7 @@ class VRChatAnnounceBot(commands.Bot):
             logger.error(Messages.Log.BOT_SETUP_ERROR.format(e))
             logger.error(f"Stack trace:\n{traceback.format_exc()}")
 
-    async def on_ready(self):
+    async def on_ready(self) -> None:
         """Called when the bot is ready and connected to Discord"""
         try:
             logger.info(Messages.Log.BOT_READY.format(self.user))
@@ -271,7 +273,7 @@ class VRChatAnnounceBot(commands.Bot):
             logger.error(Messages.Log.VRC_API_INIT_ERROR.format(e))
             logger.error(f"Stack trace:\n{traceback.format_exc()}")
 
-    async def on_message(self, message):
+    async def on_message(self, message: discord.Message) -> None:
         """Handle incoming messages"""
         if message.author.bot:
             return
@@ -279,7 +281,7 @@ class VRChatAnnounceBot(commands.Bot):
         await self.process_commands(message)
 
     @tasks.loop(minutes=60)
-    async def heartbeat_check(self):
+    async def heartbeat_check(self) -> None:
         """Periodically check VRChat authentication status"""
         if not hasattr(self, 'vrchat_api'):
             return
@@ -290,10 +292,10 @@ class VRChatAnnounceBot(commands.Bot):
             logger.error(Messages.Log.HEARTBEAT_FAIL.format(e))
 
     @heartbeat_check.before_loop
-    async def before_heartbeat(self):
+    async def before_heartbeat(self) -> None:
         await self.wait_until_ready()
 
-async def main():
+async def main() -> None:
     # Parse command-line arguments
     args = parse_arguments()
 

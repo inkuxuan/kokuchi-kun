@@ -60,8 +60,7 @@ class TestSchedulerReapproval:
             ts + 60, "Title v2", "Content v2", "msg_1", "guild_1", group_id="grp_1"
         )
 
-        # Old job should be gone, new job should exist
-        assert job_id1 not in scheduler.jobs
+        # New job should exist with updated content
         assert job_id2 in scheduler.jobs
         assert scheduler.jobs[job_id2].status == 'pending'
         assert scheduler.jobs[job_id2].title == "Title v2"
@@ -81,7 +80,6 @@ class TestSchedulerReapproval:
             ts, "Title v2", "Content v2", "msg_1", "guild_1", group_id="grp_1"
         )
 
-        assert job_id1 not in scheduler.jobs
         assert job_id2 in scheduler.jobs
         assert scheduler.jobs[job_id2].status == 'pending'
 
@@ -99,7 +97,6 @@ class TestSchedulerReapproval:
             ts, "Title v2", "Content v2", "msg_1", "guild_1", group_id="grp_1"
         )
 
-        assert job_id1 not in scheduler.jobs
         assert job_id2 in scheduler.jobs
 
     @pytest.mark.asyncio
@@ -123,36 +120,28 @@ class TestSchedulerReapproval:
         # msg_other's job should be untouched
         assert job_other in scheduler.jobs
         assert scheduler.jobs[job_other].status == 'pending'
-        # msg_1's old job gone, new one exists
-        assert job_cancelled not in scheduler.jobs
+        # msg_1's job replaced with new pending entry
         assert job_new in scheduler.jobs
+        assert scheduler.jobs[job_new].title == "New"
+        assert scheduler.jobs[job_new].status == 'pending'
 
     @pytest.mark.asyncio
-    async def test_reapproval_removes_multiple_stale_jobs(self, scheduler):
-        """If somehow multiple terminal jobs exist for same msg_id, all are cleaned."""
+    async def test_reapproval_replaces_cancelled_job(self, scheduler):
+        """Rescheduling always replaces the existing job for the same msg_id."""
         ts = int(time.time()) + 3600
 
-        # Create and cancel twice
         job_id1 = await scheduler.schedule_announcement(
             ts, "v1", "Content", "msg_1", "guild_1", group_id="grp_1"
         )
         scheduler.cancel_job(job_id1)
 
-        # Manually add a second terminal job (simulating a restore edge case)
-        from kokuchi.common.models import JobData
-        scheduler.jobs['stale_2'] = JobData(
-            id='stale_2', message_id='msg_1', timestamp=ts,
-            title='v0', content='Old', guild_id='guild_1',
-            group_id='grp_1', status='failed',
-        )
-
         job_id3 = await scheduler.schedule_announcement(
             ts, "v3", "Content", "msg_1", "guild_1", group_id="grp_1"
         )
 
-        assert job_id1 not in scheduler.jobs
-        assert 'stale_2' not in scheduler.jobs
         assert job_id3 in scheduler.jobs
+        assert scheduler.jobs[job_id3].title == "v3"
+        assert scheduler.jobs[job_id3].status == "pending"
 
 
 # --- Scheduler: reapproved job behaves normally ---

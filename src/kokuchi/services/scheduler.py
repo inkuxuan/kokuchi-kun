@@ -1,11 +1,18 @@
+from __future__ import annotations
+
 import logging
-import uuid
+from collections.abc import Callable, Coroutine
 from datetime import datetime
+from typing import TYPE_CHECKING, Any
+
 import pytz
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.jobstores.memory import MemoryJobStore
 from kokuchi.common.messages import Messages
 from kokuchi.common.models import JobData
+
+if TYPE_CHECKING:
+    from kokuchi.services.vrchat_api import VRChatAPI
 
 logger = logging.getLogger(__name__)
 
@@ -13,45 +20,53 @@ logger = logging.getLogger(__name__)
 TERMINAL_STATUSES = frozenset({'success', 'failed', 'cancelled'})
 
 class Scheduler:
-    def __init__(self, vrchat_api, scheduler_config=None):
+    def __init__(self, vrchat_api: VRChatAPI, scheduler_config: dict | None = None) -> None:
         self.vrchat_api = vrchat_api
         self.scheduler = AsyncIOScheduler()
         self.scheduler.add_jobstore(MemoryJobStore(), 'default')
-        self.jobs = {}
-        self.on_job_completion = None
+        self.jobs: dict[str, JobData] = {}
+        self.on_job_completion: Callable[[dict[str, Any]], Coroutine[Any, Any, None]] | None = None
 
         # Load misfire_grace_time from config (default: 3600 seconds = 1 hour)
         if scheduler_config is None:
             scheduler_config = {}
-        self.misfire_grace_time = scheduler_config.get('misfire_grace_time', 3600)
+        self.misfire_grace_time: int = scheduler_config.get('misfire_grace_time', 3600)
 
         # Start the scheduler
         self.scheduler.start()
 
-    def set_on_job_completion(self, callback):
+    def set_on_job_completion(
+        self, callback: Callable[[dict[str, Any]], Coroutine[Any, Any, None]]
+    ) -> None:
         """Set callback for job completion (success or failure)"""
         self.on_job_completion = callback
 
-    async def schedule_announcement(self, timestamp, title, content, message_id, guild_id,
-                                    group_id=None,
-                                    event_start_timestamp=None, event_end_timestamp=None, event_title=None):
+    async def schedule_announcement(
+        self,
+        timestamp: float,
+        title: str,
+        content: str,
+        message_id: str,
+        guild_id: str,
+        group_id: str | None = None,
+        channel_id: str | None = None,
+        event_start_timestamp: float | None = None,
+        event_end_timestamp: float | None = None,
+        event_title: str | None = None,
+    ) -> str:
         """Schedule an announcement for the given timestamp"""
-        # Clean up all existing jobs for the same message before scheduling a new one.
+        # Since job_id == message_id, there is at most one entry to remove.
         # Active (non-terminal) jobs are also unscheduled from APScheduler to prevent
         # a duplicate post when a restored pending job and a freshly-created job both
         # end up in APScheduler for the same message.
-        existing_ids = [
-            jid for jid, j in self.jobs.items()
-            if j.message_id == message_id
-        ]
-        for jid in existing_ids:
-            status = self.jobs[jid].status
-            if status not in TERMINAL_STATUSES:
-                self.unschedule_job(jid)
-            logger.info(f"Removing existing job {jid} (status={status}) for re-scheduled msg {message_id}")
-            del self.jobs[jid]
+        existing_job = self.jobs.get(message_id)
+        if existing_job:
+            if existing_job.status not in TERMINAL_STATUSES:
+                self.unschedule_job(message_id)
+            logger.info(f"Removing existing job {message_id} (status={existing_job.status}) for re-scheduled msg {message_id}")
+            del self.jobs[message_id]
 
-        job_id = str(uuid.uuid4())
+        job_id = message_id
         run_date = datetime.fromtimestamp(timestamp, tz=pytz.utc)
 
         logger.info(Messages.Log.SCHEDULING_JOB.format(run_date, job_id))
@@ -75,6 +90,7 @@ class Scheduler:
             message_id=message_id,
             guild_id=guild_id,
             group_id=group_id,
+            channel_id=channel_id,
             timestamp=timestamp,
             event_start_timestamp=event_start_timestamp,
             event_end_timestamp=event_end_timestamp,
@@ -86,7 +102,9 @@ class Scheduler:
 
         return job_id
 
-    async def _post_announcement(self, job_id, title, content, group_id):
+    async def _post_announcement(
+        self, job_id: str, title: str, content: str, group_id: str | None
+    ) -> None:
         """Execute the announcement posting"""
         try:
             # Guard against duplicate execution: if the job was fast-forwarded (or otherwise
@@ -137,7 +155,12 @@ class Scheduler:
                 if self.on_job_completion:
                     await self.on_job_completion(self.jobs[job_id].to_dict())
 
-    def restore_jobs(self, jobs_list, guild_id=None, group_id=None):
+    def restore_jobs(
+        self,
+        jobs_list: list[dict[str, Any]],
+        guild_id: str | None = None,
+        group_id: str | None = None,
+    ) -> tuple[int, list[dict[str, Any]]]:
         """Restore jobs from storage. Returns (restored_count, skipped_jobs_list)
 
         Jobs with terminal statuses (success/failed/cancelled) are kept in memory
@@ -151,7 +174,7 @@ class Scheduler:
         group_id is used as fallback for old jobs that don't have group_id stored.
         """
         restored_count = 0
-        skipped_jobs = []
+        skipped_jobs: list[dict[str, Any]] = []
         current_time = datetime.now(pytz.utc).timestamp()
 
         logger.info(f"Restoring {len(jobs_list)} jobs for guild={guild_id}")
@@ -227,7 +250,7 @@ class Scheduler:
         logger.info(f"Job restore complete: {restored_count} active, {len(skipped_jobs)} skipped")
         return restored_count, skipped_jobs
 
-    def get_jobs_data(self, guild_id=None):
+    def get_jobs_data(self, guild_id: str | None = None) -> list[dict[str, Any]]:
         """Get list of ALL jobs for persistence, optionally filtered by guild_id.
 
         Includes terminal jobs so their status is preserved across restarts.
@@ -237,7 +260,7 @@ class Scheduler:
             jobs = [j for j in jobs if j.guild_id == guild_id]
         return [job.to_dict() for job in jobs]
 
-    def list_jobs(self, guild_id=None):
+    def list_jobs(self, guild_id: str | None = None) -> list[JobData]:
         """List active scheduled jobs (pending status, still in APScheduler).
 
         Used for /list command and for rebuilding queued_announcements on restore.
@@ -249,18 +272,15 @@ class Scheduler:
                     active_jobs.append(job)
         return active_jobs
 
-    def get_job(self, job_id):
+    def get_job(self, job_id: str) -> JobData | None:
         """Get a job by its ID, or None if not found"""
         return self.jobs.get(job_id)
 
-    def get_job_by_message_id(self, message_id):
+    def get_job_by_message_id(self, message_id: str) -> JobData | None:
         """Get a job by message ID (any status). Returns None if not found."""
-        for job in self.jobs.values():
-            if job.message_id == message_id:
-                return job
-        return None
+        return self.jobs.get(message_id)
 
-    def unschedule_job(self, job_id):
+    def unschedule_job(self, job_id: str) -> None:
         """Remove a job from APScheduler without changing the job's status in self.jobs.
 
         Safe to call even if the job is not in APScheduler (e.g., missed jobs).
@@ -272,7 +292,7 @@ class Scheduler:
         except Exception as e:
             logger.error(f"Error unscheduling job {job_id}: {e}")
 
-    def cancel_job(self, job_id):
+    def cancel_job(self, job_id: str) -> bool:
         """Cancel a scheduled job by setting its status to 'cancelled'.
 
         Removes from APScheduler if present but keeps the job in self.jobs.
@@ -290,28 +310,24 @@ class Scheduler:
             logger.error(Messages.Log.JOB_CANCEL_ERROR.format(job_id, e), exc_info=True)
             return False
 
-    def cancel_job_by_message_id(self, message_id):
+    def cancel_job_by_message_id(self, message_id: str) -> bool:
         """Cancel a scheduled job by message ID"""
-        for job_id, job in list(self.jobs.items()):
-            if job.message_id == message_id:
-                return self.cancel_job(job_id)
-        logger.warning(f"Cannot cancel by message_id {message_id}: no matching job")
-        return False
+        return self.cancel_job(message_id)
 
-    def mark_job_success(self, job_id):
+    def mark_job_success(self, job_id: str) -> None:
         """Mark a job as successfully completed (for immediate posting)."""
         if job_id in self.jobs:
             self.unschedule_job(job_id)
             self.jobs[job_id].status = 'success'
             logger.info(f"Job {job_id} marked as success")
 
-    def mark_job_failed(self, job_id):
+    def mark_job_failed(self, job_id: str) -> None:
         """Mark a job as failed."""
         if job_id in self.jobs:
             self.unschedule_job(job_id)
             self.jobs[job_id].status = 'failed'
             logger.info(f"Job {job_id} marked as failed")
 
-    def shutdown(self):
+    def shutdown(self) -> None:
         """Shutdown the scheduler"""
         self.scheduler.shutdown()

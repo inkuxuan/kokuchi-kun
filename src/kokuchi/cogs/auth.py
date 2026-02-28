@@ -1,9 +1,15 @@
+from __future__ import annotations
+
 import logging
 import uuid
 import asyncio
 import discord
 from discord.ext import commands
 from kokuchi.common.messages import Messages
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from kokuchi.services.vrchat_api import VRChatAPI
 
 logger = logging.getLogger(__name__)
 
@@ -16,19 +22,19 @@ class AuthCog(commands.Cog):
     It is separate from AdminCog, which handles per-guild server admin commands.
     """
 
-    def __init__(self, bot, config, vrchat_api):
+    def __init__(self, bot: commands.Bot, config: dict, vrchat_api: VRChatAPI) -> None:
         self.bot = bot
         self.vrchat_api = vrchat_api
 
         # Bot-level admin user ID (receives OTP DMs)
-        self.admin_id = config['discord'].get('admin_id')
+        self.admin_id: str | None = config['discord'].get('admin_id')
 
-        self.otp_requests = {}  # request_id -> {'future': Future, 'message_id': int}
+        self.otp_requests: dict[str, dict] = {}  # request_id -> {'future': Future, 'message_id': int}
 
         # Set up OTP callback for VRChat API
         self.vrchat_api.set_otp_callback(self._request_otp)
 
-    async def _request_otp(self, otp_type):
+    async def _request_otp(self, otp_type: str) -> str | None:
         """Request OTP from the configured admin user via DM"""
         if not self.admin_id:
             logger.error(Messages.Log.OTP_DM_USER_NOT_CONFIGURED)
@@ -44,7 +50,7 @@ class AuthCog(commands.Cog):
         request_id = str(uuid.uuid4())
 
         # Create a future to wait for the response
-        future = asyncio.Future()
+        future: asyncio.Future[str] = asyncio.Future()
 
         # Open DM channel and send request
         dm_channel = await user.create_dm()
@@ -66,7 +72,7 @@ class AuthCog(commands.Cog):
                 del self.otp_requests[request_id]
 
     @commands.Cog.listener()
-    async def on_message(self, message):
+    async def on_message(self, message: discord.Message) -> None:
         """Handle DM messages for OTP responses (reply-to only)"""
         if message.author.bot:
             return

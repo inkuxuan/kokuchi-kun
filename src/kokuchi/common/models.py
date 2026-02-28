@@ -44,16 +44,17 @@ class JobData:
     guild_id: str
     status: str = "pending"
     group_id: str | None = None
+    channel_id: str | None = None
     event_start_timestamp: float | None = None
     event_end_timestamp: float | None = None
     event_title: str | None = None
     formatted_date_time: str | None = None
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, d: dict) -> "JobData":
+    def from_dict(cls, d: dict[str, Any]) -> "JobData":
         return cls(
             id=d["id"],
             message_id=d["message_id"],
@@ -63,6 +64,7 @@ class JobData:
             guild_id=d["guild_id"],
             status=d.get("status", "pending"),
             group_id=d.get("group_id"),
+            channel_id=d.get("channel_id"),
             event_start_timestamp=d.get("event_start_timestamp"),
             event_end_timestamp=d.get("event_end_timestamp"),
             event_title=d.get("event_title"),
