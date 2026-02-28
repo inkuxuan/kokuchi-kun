@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import AsyncMock
-from utils.announcement_state import AnnouncementState
+from kokuchi.state.announcement_state import AnnouncementState
 
 
 @pytest.fixture

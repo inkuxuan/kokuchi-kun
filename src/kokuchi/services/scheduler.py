@@ -4,8 +4,8 @@ from datetime import datetime
 import pytz
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.jobstores.memory import MemoryJobStore
-from utils.messages import Messages
-from utils.models import JobData
+from kokuchi.common.messages import Messages
+from kokuchi.common.models import JobData
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +36,21 @@ class Scheduler:
                                     group_id=None,
                                     event_start_timestamp=None, event_end_timestamp=None, event_title=None):
         """Schedule an announcement for the given timestamp"""
+        # Clean up all existing jobs for the same message before scheduling a new one.
+        # Active (non-terminal) jobs are also unscheduled from APScheduler to prevent
+        # a duplicate post when a restored pending job and a freshly-created job both
+        # end up in APScheduler for the same message.
+        existing_ids = [
+            jid for jid, j in self.jobs.items()
+            if j.message_id == message_id
+        ]
+        for jid in existing_ids:
+            status = self.jobs[jid].status
+            if status not in TERMINAL_STATUSES:
+                self.unschedule_job(jid)
+            logger.info(f"Removing existing job {jid} (status={status}) for re-scheduled msg {message_id}")
+            del self.jobs[jid]
+
         job_id = str(uuid.uuid4())
         run_date = datetime.fromtimestamp(timestamp, tz=pytz.utc)
 
@@ -74,10 +89,19 @@ class Scheduler:
     async def _post_announcement(self, job_id, title, content, group_id):
         """Execute the announcement posting"""
         try:
+            # Guard against duplicate execution: if the job was fast-forwarded (or otherwise
+            # completed) while APScheduler had already queued this coroutine, skip execution.
+            if job_id in self.jobs and self.jobs[job_id].status in TERMINAL_STATUSES:
+                logger.info(
+                    f"Job {job_id} already terminal (status={self.jobs[job_id].status}), skipping execution"
+                )
+                return
+
             logger.info(Messages.Log.EXECUTING_JOB.format(job_id))
 
             # Re-authenticate if needed
             if not self.vrchat_api.authenticated:
+                logger.info(f"Job {job_id}: VRChat not authenticated, attempting re-auth")
                 auth_result = await self.vrchat_api.initialize()
                 if not auth_result.success:
                     logger.error(Messages.Log.JOB_AUTH_FAIL.format(job_id, auth_result.error))
@@ -98,6 +122,7 @@ class Scheduler:
 
                 # If authentication failed, we'll retry after reauth
                 if "Authentication failed" in result.error:
+                    logger.warning(f"Job {job_id}: auth failure during post, skipping completion callback for retry")
                     return
 
             # Notify callback for both success and failure to persist state
@@ -106,7 +131,7 @@ class Scheduler:
                 await self.on_job_completion(self.jobs[job_id].to_dict())
 
         except Exception as e:
-            logger.error(Messages.Log.JOB_EXEC_ERROR.format(job_id, e))
+            logger.error(Messages.Log.JOB_EXEC_ERROR.format(job_id, e), exc_info=True)
             if job_id in self.jobs:
                 self.jobs[job_id].status = 'failed'
                 if self.on_job_completion:
@@ -128,6 +153,8 @@ class Scheduler:
         restored_count = 0
         skipped_jobs = []
         current_time = datetime.now(pytz.utc).timestamp()
+
+        logger.info(f"Restoring {len(jobs_list)} jobs for guild={guild_id}")
 
         for job_data in jobs_list:
             try:
@@ -195,8 +222,9 @@ class Scheduler:
                     logger.info(f"Restored job {job_id} scheduled for {run_date}")
 
             except Exception as e:
-                logger.error(f"Failed to restore job {job_data.get('id')}: {e}")
+                logger.error(f"Failed to restore job {job_data.get('id')}: {e}", exc_info=True)
 
+        logger.info(f"Job restore complete: {restored_count} active, {len(skipped_jobs)} skipped")
         return restored_count, skipped_jobs
 
     def get_jobs_data(self, guild_id=None):
@@ -240,6 +268,7 @@ class Scheduler:
         try:
             if self.scheduler.get_job(job_id) is not None:
                 self.scheduler.remove_job(job_id)
+                logger.info(f"Unscheduled job {job_id} from APScheduler")
         except Exception as e:
             logger.error(f"Error unscheduling job {job_id}: {e}")
 
@@ -249,14 +278,16 @@ class Scheduler:
         Removes from APScheduler if present but keeps the job in self.jobs.
         """
         if job_id not in self.jobs:
+            logger.warning(f"Cannot cancel job {job_id}: not found")
             return False
 
         try:
             self.unschedule_job(job_id)
             self.jobs[job_id].status = 'cancelled'
+            logger.info(f"Job {job_id} cancelled")
             return True
         except Exception as e:
-            logger.error(Messages.Log.JOB_CANCEL_ERROR.format(job_id, e))
+            logger.error(Messages.Log.JOB_CANCEL_ERROR.format(job_id, e), exc_info=True)
             return False
 
     def cancel_job_by_message_id(self, message_id):
@@ -264,6 +295,7 @@ class Scheduler:
         for job_id, job in list(self.jobs.items()):
             if job.message_id == message_id:
                 return self.cancel_job(job_id)
+        logger.warning(f"Cannot cancel by message_id {message_id}: no matching job")
         return False
 
     def mark_job_success(self, job_id):
@@ -271,12 +303,14 @@ class Scheduler:
         if job_id in self.jobs:
             self.unschedule_job(job_id)
             self.jobs[job_id].status = 'success'
+            logger.info(f"Job {job_id} marked as success")
 
     def mark_job_failed(self, job_id):
         """Mark a job as failed."""
         if job_id in self.jobs:
             self.unschedule_job(job_id)
             self.jobs[job_id].status = 'failed'
+            logger.info(f"Job {job_id} marked as failed")
 
     def shutdown(self):
         """Shutdown the scheduler"""

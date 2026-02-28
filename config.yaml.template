@@ -72,4 +72,3 @@ firestore:
   database: "(default)"            # Firestore database ID (use a different name for dev, e.g. "dev")
   servers_collection: "servers"    # Top-level collection for per-guild state
   shared_collection: "shared"      # Top-level collection for shared state (e.g. VRChat session)
-  state_subcollection: "state"     # Subcollection under each guild document

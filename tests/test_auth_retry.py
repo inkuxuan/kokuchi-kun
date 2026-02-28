@@ -1,10 +1,10 @@
 import asyncio
 import unittest
 from unittest.mock import MagicMock, AsyncMock, patch
-from utils.vrchat_api import VRChatAPI
-from utils.models import AuthResult, ApiResult
+from kokuchi.services.vrchat_api import VRChatAPI
+from kokuchi.common.models import AuthResult, ApiResult
 from vrchatapi.exceptions import UnauthorizedException, ApiException
-from utils.messages import Messages
+from kokuchi.common.messages import Messages
 
 class TestVRChatAPIAuth(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
@@ -20,7 +20,7 @@ class TestVRChatAPIAuth(unittest.IsolatedAsyncioTestCase):
         self.api.authenticated = True
         self.api.otp_callback = AsyncMock()
 
-    @patch('utils.vrchat_api.AuthenticationApi')
+    @patch('kokuchi.services.vrchat_api.AuthenticationApi')
     async def test_authenticate_totp_retry(self, MockAuthApi):
         # Setup mock
         auth_api = MockAuthApi.return_value
@@ -55,7 +55,7 @@ class TestVRChatAPIAuth(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(auth_api.verify2_fa.call_count, 2)
         self.assertEqual(self.api.otp_callback.call_count, 2)
 
-    @patch('utils.vrchat_api.AuthenticationApi')
+    @patch('kokuchi.services.vrchat_api.AuthenticationApi')
     async def test_check_auth_status_reauth(self, MockAuthApi):
         # Setup mock
         auth_api = MockAuthApi.return_value
@@ -75,8 +75,8 @@ class TestVRChatAPIAuth(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result.reauthenticated)
         self.api._authenticate.assert_called_once()
 
-    @patch('utils.vrchat_api.GroupsApi')
-    @patch('utils.vrchat_api.AuthenticationApi')
+    @patch('kokuchi.services.vrchat_api.GroupsApi')
+    @patch('kokuchi.services.vrchat_api.AuthenticationApi')
     async def test_post_announcement_reauth_retry(self, MockAuthApi, MockGroupsApi):
         # Setup mock
         groups_api = MockGroupsApi.return_value
@@ -99,7 +99,7 @@ class TestVRChatAPIAuth(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(groups_api.add_group_post.call_count, 2)
         self.api._authenticate.assert_called_once()
 
-    @patch('utils.vrchat_api.AuthenticationApi')
+    @patch('kokuchi.services.vrchat_api.AuthenticationApi')
     async def test_initialize_cookie_username_mismatch(self, MockAuthApi):
         """When cached cookie belongs to a different user, invalidate and re-auth with credentials"""
         auth_api = MockAuthApi.return_value
@@ -128,7 +128,7 @@ class TestVRChatAPIAuth(unittest.IsolatedAsyncioTestCase):
         # Cookies should have been invalidated (saved as empty dict)
         self.mock_persistence.save_shared.assert_any_call('vrchat_session', {})
 
-    @patch('utils.vrchat_api.AuthenticationApi')
+    @patch('kokuchi.services.vrchat_api.AuthenticationApi')
     async def test_initialize_cookie_username_match(self, MockAuthApi):
         """When cached cookie belongs to the configured user, use it directly"""
         auth_api = MockAuthApi.return_value
@@ -147,7 +147,7 @@ class TestVRChatAPIAuth(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.username, 'user')
         self.assertEqual(result.method, 'cookie')
 
-    @patch('utils.vrchat_api.AuthenticationApi')
+    @patch('kokuchi.services.vrchat_api.AuthenticationApi')
     async def test_check_auth_status_username_mismatch(self, MockAuthApi):
         """Heartbeat detects wrong user and triggers re-auth with credentials"""
         auth_api = MockAuthApi.return_value
@@ -165,7 +165,7 @@ class TestVRChatAPIAuth(unittest.IsolatedAsyncioTestCase):
         # Cookies should have been invalidated
         self.mock_persistence.save_shared.assert_any_call('vrchat_session', {})
 
-    @patch('utils.vrchat_api.AuthenticationApi')
+    @patch('kokuchi.services.vrchat_api.AuthenticationApi')
     async def test_check_auth_status_username_match(self, MockAuthApi):
         """Heartbeat with correct user returns success with username"""
         auth_api = MockAuthApi.return_value

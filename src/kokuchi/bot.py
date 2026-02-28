@@ -15,14 +15,16 @@ import discord
 from discord.ext import commands, tasks
 import traceback
 
-from utils.vrchat_api import VRChatAPI
-from utils.ai_processor import AIProcessor
-from utils.scheduler import Scheduler
-from utils.persistence import Persistence
-from cogs.announcement import AnnouncementCog
-from cogs.admin import AdminCog
-from cogs.general import GeneralCog
-from utils.messages import Messages
+from kokuchi.services.vrchat_api import VRChatAPI
+from kokuchi.services.ai_processor import AIProcessor
+from kokuchi.services.scheduler import Scheduler
+from kokuchi.state.persistence import Persistence
+from kokuchi.state.state_manager import StateManager
+from kokuchi.cogs.announcement import AnnouncementCog
+from kokuchi.cogs.admin import AdminCog
+from kokuchi.cogs.auth import AuthCog
+from kokuchi.cogs.general import GeneralCog
+from kokuchi.common.messages import Messages
 
 def ensure_config_exists():
     """Create config.yaml from template if it is missing, then exit so the user can fill it in."""
@@ -118,6 +120,18 @@ class VRChatAnnounceBot(commands.Bot):
         self.scheduler = Scheduler(self.vrchat_api, self.config.get('scheduler', {}))
         self.ai_processor = AIProcessor(self.config['openrouter'])
 
+        # Build per-guild config lookup for StateManager
+        guild_configs = {}
+        for guild_conf in self.config['discord'].get('guilds', []):
+            guild_configs[guild_conf['guild_id']] = guild_conf
+
+        self.state_manager = StateManager(
+            scheduler=self.scheduler,
+            vrchat_api=self.vrchat_api,
+            guild_persistences=self.guild_persistences,
+            guild_configs=guild_configs,
+        )
+
         # Start heartbeat loop
         heartbeat_interval = self.config['vrchat'].get('heartbeat_interval', 60)
         if heartbeat_interval > 0:
@@ -191,9 +205,10 @@ class VRChatAnnounceBot(commands.Bot):
     async def setup_hook(self):
         """Set up the bot's components"""
         try:
-            # Add cogs (AnnouncementCog sets up its own OTP callback)
-            await self.add_cog(AnnouncementCog(self, self.config, self.ai_processor, self.scheduler, self.guild_persistences, self.vrchat_api))
-            await self.add_cog(AdminCog(self, self.config, self.scheduler))
+            # Add cogs
+            await self.add_cog(AuthCog(self, self.config, self.vrchat_api))
+            await self.add_cog(AnnouncementCog(self, self.config, self.ai_processor, self.state_manager, self.vrchat_api))
+            await self.add_cog(AdminCog(self, self.config, self.state_manager))
             await self.add_cog(GeneralCog(self))
 
             await self.tree.sync()

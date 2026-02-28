@@ -3,7 +3,7 @@ import pytest
 import logging
 from unittest.mock import MagicMock, AsyncMock
 from dotenv import load_dotenv
-from utils.vrchat_api import VRChatAPI
+from kokuchi.services.vrchat_api import VRChatAPI
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, 

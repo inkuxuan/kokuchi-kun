@@ -1,7 +1,7 @@
 import pytest
 import pytest_asyncio
 from unittest.mock import MagicMock, AsyncMock
-from utils.scheduler import Scheduler
+from kokuchi.services.scheduler import Scheduler
 import time
 import asyncio
 

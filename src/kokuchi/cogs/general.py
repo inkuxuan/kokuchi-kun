@@ -1,6 +1,6 @@
 import discord
 from discord.ext import commands
-from utils.version import get_version
+from kokuchi.common.version import get_version
 
 class GeneralCog(commands.Cog):
     def __init__(self, bot):

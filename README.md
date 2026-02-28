@@ -71,7 +71,7 @@ Note that:
 ## Run the bot
 
 ```bash
-uv run --frozen bot.py
+uv run --frozen -m kokuchi.bot
 ```
 
 or alternatively use `run.bat` / `run.sh`

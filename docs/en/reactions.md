@@ -25,6 +25,7 @@ The bot uses emoji reactions to drive its approval and scheduling workflow.
 - **On message:** The user's request message
 - **Meaning:** Approves the announcement. The bot starts AI processing to extract the date, time, title, and content, then schedules the post.
 - **Removing it:** If the admin removes the 👍, the scheduled announcement is cancelled.
+- **Re-adding it:** If the announcement was cancelled, adding 👍 again will re-approve the (possibly edited) message and create a new booking.
 
 ### ⏩ Post now
 
