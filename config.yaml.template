@@ -5,6 +5,9 @@ discord:
   fast_forward_emoji: "⏩"
   calendar_emoji: "📅"
   admin_id: 000000000000000000  # Discord User ID for the bot admin (receives OTP DMs and config warnings)
+  notify_online: true       # Send "Bot is online" message to guilds on startup
+  notify_login: true        # Send "Logged into VRChat as X" message after VRChat auth
+  notify_restoration: true  # Send "X pending, X booked announcements restored" message on startup
 
   guilds:  # List of Discord servers (guilds) the bot serves
     - guild_id: 000000000000000000      # Discord Server (Guild) ID
