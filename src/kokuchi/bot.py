@@ -211,9 +211,13 @@ class VRChatAnnounceBot(commands.Bot):
             await self.add_cog(AuthCog(self, self.config, self.vrchat_api))
             await self.add_cog(AnnouncementCog(self, self.config, self.ai_processor, self.state_manager, self.vrchat_api))
             await self.add_cog(AdminCog(self, self.config, self.state_manager))
-            await self.add_cog(GeneralCog(self))
+            await self.add_cog(GeneralCog(self, self.vrchat_api, self.state_manager))
 
             await self.tree.sync()
+            # Also sync to each configured guild for immediate slash command availability
+            for guild_conf in self.config['discord'].get('guilds', []):
+                guild_id = guild_conf['guild_id']
+                await self.tree.sync(guild=discord.Object(id=int(guild_id)))
             logger.info(Messages.Log.BOT_SETUP_SUCCESS)
 
         except Exception as e:
@@ -227,6 +231,10 @@ class VRChatAnnounceBot(commands.Bot):
 
             # Send online message to the first channel of each configured guild
             for guild_conf in self.config['discord']['guilds']:
+                if not guild_conf.get('enabled', True):
+                    continue
+                if not guild_conf.get('notify_online', True):
+                    continue
                 channel_ids = guild_conf.get('channel_ids', [])
                 if channel_ids:
                     channel = self.get_channel(int(channel_ids[0]))
@@ -253,6 +261,10 @@ class VRChatAnnounceBot(commands.Bot):
             # Send login confirmation to first channel of each guild, with group name
             display_name = auth_result.display_name or 'Unknown'
             for guild_conf in self.config['discord']['guilds']:
+                if not guild_conf.get('enabled', True):
+                    continue
+                if not guild_conf.get('notify_login', True):
+                    continue
                 channel_ids = guild_conf.get('channel_ids', [])
                 if not channel_ids:
                     continue
