@@ -5,9 +5,6 @@ discord:
   fast_forward_emoji: "⏩"
   calendar_emoji: "📅"
   admin_id: 000000000000000000  # Discord User ID for the bot admin (receives OTP DMs and config warnings)
-  notify_online: true       # Send "Bot is online" message to guilds on startup
-  notify_login: true        # Send "Logged into VRChat as X" message after VRChat auth
-  notify_restoration: true  # Send "X pending, X booked announcements restored" message on startup
 
   guilds:  # List of Discord servers (guilds) the bot serves
     - guild_id: 000000000000000000      # Discord Server (Guild) ID
@@ -17,6 +14,9 @@ discord:
         - 000000000000000000
       admin_role_id: 000000000000000000  # Role ID with admin privileges
       # firestore_server_id: "custom"   # Optional: override the Firestore key for this guild (defaults to guild_id)
+      # notify_online: true             # Send "Bot is online" message on startup (default: true)
+      # notify_login: true              # Send "Logged into VRChat as X" message after VRChat auth (default: true)
+      # notify_restoration: true        # Send restored announcements stats on startup (default: true)
 
 openrouter:
   model: "deepseek/deepseek-v3.2"

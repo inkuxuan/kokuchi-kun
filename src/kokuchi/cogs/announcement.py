@@ -177,7 +177,7 @@ class AnnouncementCog(commands.Cog):
                 await gctx.save_state()
 
                 # Send restoration message to first channel
-                notify_restoration = self.config['discord'].get('notify_restoration', True)
+                notify_restoration = self.guild_configs[gid].get('notify_restoration', True)
                 channel = self.bot.get_channel(int(gctx.channel_ids[0]))
                 if channel and notify_restoration:
                     msg = Messages.Discord.RESTORATION_STATS.format(pending_count, restored_jobs)

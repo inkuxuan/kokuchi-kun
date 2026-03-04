@@ -230,11 +230,10 @@ class VRChatAnnounceBot(commands.Bot):
             logger.info(Messages.Log.BOT_READY.format(self.user))
 
             # Send online message to the first channel of each configured guild
-            notify_online = self.config['discord'].get('notify_online', True)
             for guild_conf in self.config['discord']['guilds']:
                 if not guild_conf.get('enabled', True):
                     continue
-                if not notify_online:
+                if not guild_conf.get('notify_online', True):
                     continue
                 channel_ids = guild_conf.get('channel_ids', [])
                 if channel_ids:
@@ -261,11 +260,10 @@ class VRChatAnnounceBot(commands.Bot):
 
             # Send login confirmation to first channel of each guild, with group name
             display_name = auth_result.display_name or 'Unknown'
-            notify_login = self.config['discord'].get('notify_login', True)
             for guild_conf in self.config['discord']['guilds']:
                 if not guild_conf.get('enabled', True):
                     continue
-                if not notify_login:
+                if not guild_conf.get('notify_login', True):
                     continue
                 channel_ids = guild_conf.get('channel_ids', [])
                 if not channel_ids:
