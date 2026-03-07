@@ -8,6 +8,7 @@ import time
 
 from kokuchi.cogs.admin import AdminCog
 from kokuchi.cogs.announcement import AnnouncementCog
+from kokuchi.cogs.general import GeneralCog
 from kokuchi.state.state_manager import StateManager
 from kokuchi.common.messages import Messages
 from kokuchi.common.models import AIProcessingResult, JobData
@@ -513,3 +514,99 @@ class TestCogs:
 
         mock_message.reply.assert_called_once_with(Messages.Discord.GUILD_DISABLED)
         assert not state_manager.get_state(str(TEST_GUILD_ID)).is_pending(str(mock_message.id))
+
+    # GeneralCog Tests
+
+    TEST_ADMIN_USER_ID = 555000555
+
+    @pytest.fixture
+    def mock_bot_with_admin(self, mock_bot, mock_config):
+        """Bot mock with admin_id set in config."""
+        mock_config['discord']['admin_id'] = str(self.TEST_ADMIN_USER_ID)
+        mock_bot.config = mock_config
+        mock_bot.command_prefix = "!"
+        return mock_bot
+
+    @pytest.fixture
+    def general_cog(self, mock_bot_with_admin, mock_state_manager, mock_vrchat_api):
+        """Create a GeneralCog instance with mocks."""
+        return GeneralCog(mock_bot_with_admin, mock_vrchat_api, mock_state_manager)
+
+    def _make_dm_context(self, user_id: int, reply_mock):
+        ctx = MagicMock()
+        ctx.channel = MagicMock(spec=discord.DMChannel)
+        ctx.author = MagicMock()
+        ctx.author.id = user_id
+        ctx.reply = reply_mock
+        return ctx
+
+    def _make_guild_context(self, user_id: int, reply_mock):
+        ctx = MagicMock()
+        ctx.channel = MagicMock()  # not a DMChannel
+        ctx.author = MagicMock()
+        ctx.author.id = user_id
+        ctx.reply = reply_mock
+        return ctx
+
+    @pytest.mark.asyncio
+    async def test_listall_ignored_in_guild_channel(self, general_cog):
+        """listall should silently do nothing when not in a DM."""
+        reply = AsyncMock()
+        ctx = self._make_guild_context(self.TEST_ADMIN_USER_ID, reply)
+        await general_cog.list_all_jobs(general_cog, ctx)
+        reply.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_listall_rejected_for_non_admin(self, general_cog):
+        """listall should reject non-admin users in DMs."""
+        reply = AsyncMock()
+        ctx = self._make_dm_context(user_id=999888777, reply_mock=reply)
+        await general_cog.list_all_jobs(general_cog, ctx)
+        reply.assert_called_once()
+        args, _ = reply.call_args
+        assert "管理者" in args[0]
+
+    @pytest.mark.asyncio
+    async def test_listall_returns_all_jobs_for_admin(self, general_cog, mock_scheduler):
+        """listall should return all jobs across guilds when called by bot admin in DM."""
+        second_guild_id = "222222222"
+        mock_scheduler.list_jobs.return_value = [
+            JobData(
+                id="job1", title="Alpha", content="content a",
+                formatted_date_time="2024-01-01 10:00", timestamp=1704067200,
+                message_id="111", guild_id=str(TEST_GUILD_ID),
+            ),
+            JobData(
+                id="job2", title="Beta", content="content b",
+                formatted_date_time="2024-01-02 10:00", timestamp=1704153600,
+                message_id="222", guild_id=second_guild_id,
+            ),
+        ]
+        general_cog.bot.get_guild = MagicMock(return_value=None)
+
+        reply = AsyncMock()
+        ctx = self._make_dm_context(user_id=self.TEST_ADMIN_USER_ID, reply_mock=reply)
+        await general_cog.list_all_jobs(general_cog, ctx)
+
+        # Called with no guild_id filter
+        mock_scheduler.list_jobs.assert_called_once_with()
+        reply.assert_called_once()
+        _, kwargs = reply.call_args
+        embed = kwargs.get("embed") or reply.call_args[0][0] if reply.call_args[0] else None
+        # embed is passed as keyword arg
+        call_kwargs = reply.call_args[1] if reply.call_args[1] else {}
+        assert "embed" in call_kwargs
+        embed = call_kwargs["embed"]
+        assert len(embed.fields) == 2
+
+    @pytest.mark.asyncio
+    async def test_listall_no_jobs_message(self, general_cog, mock_scheduler):
+        """listall should reply with a no-jobs message when scheduler is empty."""
+        mock_scheduler.list_jobs.return_value = []
+        reply = AsyncMock()
+        ctx = self._make_dm_context(user_id=self.TEST_ADMIN_USER_ID, reply_mock=reply)
+        await general_cog.list_all_jobs(general_cog, ctx)
+        reply.assert_called_once()
+        args, _ = reply.call_args
+        assert "ありません" in args[0]
+
