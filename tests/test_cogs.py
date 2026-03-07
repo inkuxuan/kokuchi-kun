@@ -609,4 +609,32 @@ class TestCogs:
         reply.assert_called_once()
         args, _ = reply.call_args
         assert "ありません" in args[0]
+    @pytest.mark.asyncio
+    async def test_on_job_complete_success_updates_embed(self, announcement_cog, mock_persistence):
+        """Test that a successful job completion updates the booking embed with a checkmark."""
+        guild_id = str(TEST_GUILD_ID)
+        msg_id = "msg_posted"
+
+        # Set up state with a bot reply
+        gctx = announcement_cog.state_manager.get_guild_context(guild_id)
+        gctx.state.add_pending(msg_id)
+        gctx.state.mark_queued(msg_id, "999")
+
+        # Mock the channel and bot reply message
+        mock_embed = MagicMock()
+        mock_embed.title = "告知が予約されました"
+        mock_embed.copy = MagicMock(return_value=mock_embed)
+        bot_reply_msg = AsyncMock()
+        bot_reply_msg.embeds = [mock_embed]
+
+        channel = AsyncMock()
+        channel.fetch_message = AsyncMock(return_value=bot_reply_msg)
+        announcement_cog.bot.get_channel = MagicMock(return_value=channel)
+
+        job_data = {'message_id': msg_id, 'status': 'success', 'guild_id': guild_id}
+        await announcement_cog._on_job_complete(job_data)
+
+        bot_reply_msg.edit.assert_called_once()
+        edited_embed = bot_reply_msg.edit.call_args[1]['embed']
+        assert edited_embed.title.startswith("✅")
 
