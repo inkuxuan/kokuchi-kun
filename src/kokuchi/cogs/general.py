@@ -3,6 +3,7 @@ from __future__ import annotations
 import discord
 from discord.ext import commands
 from kokuchi.common.version import get_version
+from kokuchi.common.messages import Messages
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -39,3 +40,16 @@ class GeneralCog(commands.Cog):
     @commands.hybrid_command(name="version", description="Get the current bot version")
     async def version_cmd(self, ctx: commands.Context) -> None:
         await ctx.reply(f"Kokuchi-kun Version {self.version}")
+
+    @commands.hybrid_command(name="help", description="Display command help")
+    async def help_command(self, ctx: commands.Context) -> None:
+        prefix = self.bot.command_prefix
+        embed = discord.Embed(
+            title=Messages.Discord.CMD_LIST_TITLE,
+            color=discord.Color.blue()
+        )
+        embed.add_field(name=f"{prefix}list または /list", value=Messages.Discord.CMD_LIST_DESC, inline=False)
+        embed.add_field(name=f"{prefix}cancel [メッセージID] または /cancel", value=Messages.Discord.CMD_CANCEL_DESC, inline=False)
+        embed.add_field(name=f"{prefix}help または /help", value=Messages.Discord.CMD_HELP_DESC, inline=False)
+        embed.set_footer(text=f"Version: {self.version} | マニュアル: https://inkuxuan.github.io/kokuchi-kun/")
+        await ctx.reply(embed=embed)

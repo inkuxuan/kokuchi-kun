@@ -131,27 +131,6 @@ class AdminCog(commands.Cog):
         else:
             await ctx.reply(Messages.Discord.JOB_NOT_FOUND.format(message_id))
 
-    @commands.hybrid_command(
-        name="help",
-        description="Display admin command help"
-    )
-    async def help_command(self, ctx: commands.Context) -> None:
-        """Display help information"""
-        embed = discord.Embed(
-            title=Messages.Discord.CMD_LIST_TITLE,
-            color=discord.Color.blue()
-        )
-
-        prefix = self.prefix
-        embed.add_field(name=f"{prefix}list または /list", value=Messages.Discord.CMD_LIST_DESC, inline=False)
-        embed.add_field(name=f"{prefix}cancel [メッセージID] または /cancel", value=Messages.Discord.CMD_CANCEL_DESC, inline=False)
-        embed.add_field(name=f"{prefix}help または /help", value=Messages.Discord.CMD_HELP_DESC, inline=False)
-
-        # Add version and manual link
-        embed.set_footer(text=f"Version: {self.version} | マニュアル: https://inkuxuan.github.io/kokuchi-kun/")
-
-        await ctx.reply(embed=embed)
-
     async def cog_app_command_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError) -> None:
         """Handle errors from slash commands"""
         if isinstance(error, app_commands.errors.CheckFailure):
