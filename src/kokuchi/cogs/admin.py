@@ -74,15 +74,18 @@ class AdminCog(commands.Cog):
             color=discord.Color.blue()
         )
 
+        gctx = self.state_manager.get_guild_context(guild_id)
         for job in jobs:
             # Trim content if too long
             content = job.content
             if len(content) > 100:
                 content = content[:97] + "..."
 
+            has_calendar = gctx.state.has_calendar_event(job.message_id)
+            calendar_indicator = " 📅" if has_calendar else ""
             embed.add_field(
-                name=f"メッセージID: {job.id} - <t:{int(job.timestamp)}:F>",
-                value=f"タイトル: {job.title}\n内容: {content}",
+                name=f"**{job.title}**{calendar_indicator} — <t:{int(job.timestamp)}:F>",
+                value=f"ID: {job.id}\n{content}",
                 inline=False
             )
 

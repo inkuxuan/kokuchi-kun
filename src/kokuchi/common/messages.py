@@ -108,7 +108,7 @@ class Messages:
         FIELD_CONTENT = "内容"
         FIELD_JOB_ID = "メッセージID"
         FIELD_HINTS = "ヒント"
-        FIELD_HINTS_CONTENTS = "このメッセージに⏩リアクションで告知を即時投稿できます\n 📅リアクションでVRCカレンダー登録できます(本人OR管理ロール限定)。\n元メッセージを削除する、または管理ロールのリアクションを消すと予約キャンセルできます。"
+        FIELD_HINTS_CONTENTS = "📅 リアクション → カレンダー投稿\n⏩ リアクション → 即時投稿【キャンセルできません】\nキャンセル：申請メッセージ削除、もしくは 👍 リアクション撤回"
         PROCESSING_ERROR = "告知の処理中にエラーが発生しました: {}"
         IMMEDIATE_POST_SUCCESS = "告知を即時投稿しました"
         IMMEDIATE_POST_FAIL = "即時投稿に失敗しました: {}"
