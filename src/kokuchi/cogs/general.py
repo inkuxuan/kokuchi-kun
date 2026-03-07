@@ -3,6 +3,7 @@ from __future__ import annotations
 import discord
 from discord.ext import commands
 from kokuchi.common.version import get_version
+from kokuchi.common.messages import Messages
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -39,3 +40,46 @@ class GeneralCog(commands.Cog):
     @commands.hybrid_command(name="version", description="Get the current bot version")
     async def version_cmd(self, ctx: commands.Context) -> None:
         await ctx.reply(f"Kokuchi-kun Version {self.version}")
+
+    @commands.command(name="listall")
+    async def list_all_jobs(self, ctx: commands.Context) -> None:
+        """DM-only: list all scheduled jobs across all guilds (bot admin only)"""
+        if not isinstance(ctx.channel, discord.DMChannel):
+            return
+
+        admin_id = self.bot.config.get('discord', {}).get('admin_id')
+        if not admin_id or str(ctx.author.id) != admin_id:
+            await ctx.reply("このコマンドはBotの管理者専用です。")
+            return
+
+        jobs = self.state_manager.scheduler.list_jobs()
+        if not jobs:
+            await ctx.reply("予約されている告知はありません。")
+            return
+
+        embed = discord.Embed(title="全サーバー 予約告知一覧", color=discord.Color.blue())
+        for job in jobs:
+            content = job.content
+            if len(content) > 100:
+                content = content[:97] + "..."
+            guild = self.bot.get_guild(int(job.guild_id)) if job.guild_id else None
+            guild_name = guild.name if guild else job.guild_id
+            embed.add_field(
+                name=f"**{job.title}** — <t:{int(job.timestamp)}:F>",
+                value=f"サーバー: {guild_name}\nID: {job.id}\n{content}",
+                inline=False
+            )
+        await ctx.reply(embed=embed)
+
+    @commands.hybrid_command(name="help", description="Display command help")
+    async def help_command(self, ctx: commands.Context) -> None:
+        prefix = self.bot.command_prefix
+        embed = discord.Embed(
+            title=Messages.Discord.CMD_LIST_TITLE,
+            color=discord.Color.blue()
+        )
+        embed.add_field(name=f"{prefix}list または /list", value=Messages.Discord.CMD_LIST_DESC, inline=False)
+        embed.add_field(name=f"{prefix}cancel [メッセージID] または /cancel", value=Messages.Discord.CMD_CANCEL_DESC, inline=False)
+        embed.add_field(name=f"{prefix}help または /help", value=Messages.Discord.CMD_HELP_DESC, inline=False)
+        embed.set_footer(text=f"Version: {self.version} | マニュアル: https://inkuxuan.github.io/kokuchi-kun/")
+        await ctx.reply(embed=embed)

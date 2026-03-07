@@ -60,6 +60,7 @@ class AnnouncementCog(commands.Cog):
 
             if message_id and status == 'success':
                 gctx.state.mark_completed(message_id)
+                await self._mark_embed_posted(message_id, gctx)
 
             # Save the updated announcement document
             if message_id:
@@ -73,6 +74,30 @@ class AnnouncementCog(commands.Cog):
             )
         except Exception as e:
             logger.error(f"Error in job completion callback: {e}", exc_info=True)
+
+    async def _mark_embed_posted(self, message_id: str, gctx: GuildContext) -> None:
+        """Update the booking embed to indicate the announcement was posted successfully."""
+        bot_reply_id = gctx.state.get_bot_reply_id(message_id)
+        if not bot_reply_id:
+            return
+        for cid in gctx.channel_ids:
+            channel = self.bot.get_channel(int(cid))
+            if not channel:
+                continue
+            try:
+                msg = await channel.fetch_message(int(bot_reply_id))
+                if not msg.embeds:
+                    return
+                embed = msg.embeds[0].copy()
+                embed.title = "✅ " + (embed.title or "")
+                embed.color = discord.Color.green()
+                await msg.edit(embed=embed)
+                return
+            except discord.NotFound:
+                continue
+            except Exception as e:
+                logger.warning(f"Could not update embed for msg {message_id}: {e}")
+                return
 
     # --- Missed reaction warning ---
 
@@ -814,10 +839,10 @@ class AnnouncementCog(commands.Cog):
                 # Mark the job as successfully completed
                 scheduler.mark_job_success(job.id)
 
-                # Update embed to show success
+                # Update embed to show fast-forward success
                 embed = processing_msg.embeds[0]
                 embed.color = discord.Color.gold()
-                embed.title = Messages.Discord.IMMEDIATE_POST_SUCCESS
+                embed.title = "⏩ " + Messages.Discord.IMMEDIATE_POST_SUCCESS
                 embed.description = Messages.Discord.IMMEDIATE_POST_EXECUTED
 
                 await processing_msg.edit(embed=embed)

@@ -326,6 +326,15 @@ async def main() -> None:
         logger.error(Messages.Log.CONFIG_LOAD_FAIL.format(e))
         return
 
+    # Load prompt from file
+    try:
+        prompt_file = config.get('openrouter', {}).get('prompt_file', 'prompt.txt')
+        with open(prompt_file, 'r', encoding='utf-8') as f:
+            config['openrouter']['prompt'] = f.read()
+    except Exception as e:
+        logger.error(f"Failed to load prompt file: {e}")
+        return
+
     # Create and start the bot
     bot = VRChatAnnounceBot(config, args)
     try:
