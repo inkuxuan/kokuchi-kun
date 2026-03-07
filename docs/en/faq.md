@@ -26,13 +26,40 @@ The 👀 means the bot received your request. The next step requires **admin app
 
 If the announcement has **not yet been approved** (no 👍): simply edit your original message before an admin approves it.
 
-If it has **already been approved and scheduled**:
+If it has **already been approved and scheduled**, or an error occurred after approval:
 
-1. Ask an admin to remove the 👍 (or run `/cancel <job_id>`) to cancel the booking
-2. Edit your original message in Discord to fix the mistake
-3. Have an admin add 👍 again to re-approve
+- **If you are an admin:** Remove the 👍 to automatically cancel the booking. Then edit the request message and re-add 👍.
+- **If you are the original submitter:** Delete your request message, correct the content, and resubmit.
 
-The bot will re-process the edited message and create a fresh booking. You don't need to delete and resubmit — just cancel, edit, and re-approve. See [Editing and Re-approving](./features#editing-and-re-approving) for details.
+See [Editing and Re-approving](./features#editing-and-re-approving) for details.
+
+---
+
+## I got an error
+
+**Q: An error message appeared after the announcement was approved**
+
+First check whether your request is missing required information (e.g. date, time, or unclear formatting). If so, follow the steps in "I made a mistake in my request" to cancel, fix, and resubmit.
+
+If the content looks correct, please contact the service operator.
+
+---
+
+## The calendar event name is wrong
+
+**Q: The event name on the VRChat calendar is not what I intended**
+
+The calendar event name is inferred by AI from your announcement title and content. To ensure a specific event name, state it explicitly in your request.
+
+Example: `Event name: Let's go fishing together!`
+
+---
+
+## The extracted time or content is wrong
+
+**Q: The time or content parsed by the bot doesn't match what I wrote**
+
+The AI may have misread your request. Follow the steps in "I made a mistake in my request" to cancel, then rewrite your request more clearly and resubmit.
 
 ---
 
