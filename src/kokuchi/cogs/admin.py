@@ -147,8 +147,8 @@ class AdminCog(commands.Cog):
         embed.add_field(name=f"{prefix}cancel [メッセージID] または /cancel", value=Messages.Discord.CMD_CANCEL_DESC, inline=False)
         embed.add_field(name=f"{prefix}help または /help", value=Messages.Discord.CMD_HELP_DESC, inline=False)
 
-        # Add version information
-        embed.set_footer(text=f"Version: {self.version}")
+        # Add version and manual link
+        embed.set_footer(text=f"Version: {self.version} | マニュアル: https://inkuxuan.github.io/kokuchi-kun/")
 
         await ctx.reply(embed=embed)
 
