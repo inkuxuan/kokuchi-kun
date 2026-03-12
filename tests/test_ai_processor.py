@@ -203,6 +203,37 @@ async def test_process_announcement_overflow_end_time(ai_processor):
 
 
 @pytest.mark.asyncio
+async def test_process_announcement_unescaped_quotes_in_content(ai_processor):
+    """AI sometimes returns unescaped double quotes inside JSON string values,
+    e.g. content: "テーマは"あなたの好きな食べ物"です" — json-repair must fix this."""
+    mock_response = MagicMock()
+    # Intentionally malformed: unescaped ASCII double quotes around the topic name
+    mock_response.choices[0].message.content = (
+        '{'
+        '"announcement_date": "2026-03-12",'
+        '"announcement_time": "21:00",'
+        '"event_start_date": "2026-03-13",'
+        '"event_start_time": "22:00",'
+        '"event_end_date": "2026-03-13",'
+        '"event_end_time": "23:00",'
+        '"title": "活動予告",'
+        '"event_title": "第136回中日交流会",'
+        '"content": "这次的主题是"你小时候最喜欢吃的零食"。到时见！"'
+        '}'
+    )
+
+    with patch('openai.resources.chat.completions.AsyncCompletions.create', new_callable=AsyncMock) as mock_create:
+        mock_create.return_value = mock_response
+
+        result = await ai_processor.process_announcement("Test message")
+
+        assert result.success is True
+        assert result.title == "活動予告"
+        assert result.event_title == "第136回中日交流会"
+        assert "你小时候最喜欢吃的零食" in result.content
+
+
+@pytest.mark.asyncio
 async def test_process_announcement_missing_required_fields(ai_processor):
     # Mock OpenAI response missing required fields
     mock_response = MagicMock()

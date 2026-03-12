@@ -1,6 +1,7 @@
 import logging
 import json
 import re
+from json_repair import repair_json
 import calendar
 import openai
 from datetime import datetime, timedelta
@@ -96,8 +97,8 @@ class AIProcessor:
                             ai_response = ai_response[4:].strip()
                         break
 
-            # Parse the JSON
-            parsed_response = json.loads(ai_response)
+            # Parse the JSON (repair handles unescaped quotes and other common AI output issues)
+            parsed_response = json.loads(repair_json(ai_response))
             logger.info(Messages.Log.AI_PARSED_RESPONSE.format(parsed_response))
 
             jst = pytz.timezone('Asia/Tokyo')
