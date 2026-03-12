@@ -24,6 +24,7 @@ dependencies = [
     "pytz>=2025.2",
     "python-dateutil>=2.9.0.post0",
     "google-cloud-firestore>=2.16.0",
+    "json-repair>=0.30.0",
 ]
 
 [tool.setuptools.packages.find]
