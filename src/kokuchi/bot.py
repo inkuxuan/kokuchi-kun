@@ -204,6 +204,56 @@ class VRChatAnnounceBot(commands.Bot):
         self.config['vrchat']['password'] = os.getenv('VRCHAT_PASSWORD')
         # group_id is now loaded from config.yaml
 
+    def reload_config(self) -> None:
+        """Reload config.yaml and prompt from disk, updating all components in-place."""
+        # Reload config.yaml
+        with open('config.yaml', 'r', encoding='utf-8') as f:
+            new_config = yaml.safe_load(f)
+
+        # Reload prompt from file
+        prompt_file = new_config.get('openrouter', {}).get('prompt_file', 'prompt.txt')
+        with open(prompt_file, 'r', encoding='utf-8') as f:
+            new_config['openrouter']['prompt'] = f.read()
+
+        # Preserve environment variables (secrets not in config.yaml)
+        new_config['discord']['token'] = self.config['discord'].get('token')
+        new_config['openrouter']['api_key'] = self.config['openrouter'].get('api_key')
+        new_config['vrchat']['username'] = self.config['vrchat'].get('username')
+        new_config['vrchat']['password'] = self.config['vrchat'].get('password')
+
+        # Update the shared config reference
+        self.config = new_config
+
+        # Normalize IDs
+        self._normalize_config()
+
+        # Update AI processor prompt and model
+        self.ai_processor.prompt = new_config['openrouter']['prompt']
+        self.ai_processor.model = new_config['openrouter']['model']
+
+        # Rebuild guild configs and invalidate guild context cache in state manager
+        guild_configs = {}
+        for guild_conf in new_config['discord'].get('guilds', []):
+            guild_configs[guild_conf['guild_id']] = guild_conf
+        self.state_manager.guild_configs = guild_configs
+        self.state_manager._guild_contexts.clear()
+
+        # Update cog config references
+        for cog in self.cogs.values():
+            if hasattr(cog, 'config'):
+                cog.config = new_config
+            if hasattr(cog, 'guild_configs'):
+                cog.guild_configs = guild_configs
+            if hasattr(cog, '_all_channel_ids'):
+                all_channel_ids: set[str] = set()
+                for gc in guild_configs.values():
+                    all_channel_ids.update(gc.get('channel_ids', []))
+                cog._all_channel_ids = all_channel_ids
+            if hasattr(cog, 'admin_id'):
+                cog.admin_id = new_config['discord'].get('admin_id')
+
+        logger.info("Configuration reloaded successfully")
+
     async def setup_hook(self) -> None:
         """Set up the bot's components"""
         try:

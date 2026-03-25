@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import discord
 from discord.ext import commands
 from kokuchi.common.version import get_version
@@ -9,6 +10,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from kokuchi.services.vrchat_api import VRChatAPI
     from kokuchi.state.state_manager import StateManager
+
+logger = logging.getLogger(__name__)
 
 class GeneralCog(commands.Cog):
     def __init__(self, bot: commands.Bot, vrchat_api: VRChatAPI, state_manager: StateManager) -> None:
@@ -71,6 +74,22 @@ class GeneralCog(commands.Cog):
             )
         await ctx.reply(embed=embed)
 
+    @commands.hybrid_command(name="reload", description="Reload config and prompt (bot admin only)")
+    async def reload_config(self, ctx: commands.Context) -> None:
+        """Reload config.yaml and prompt file without restarting the bot."""
+        admin_id = self.bot.config.get('discord', {}).get('admin_id')
+        if not admin_id or str(ctx.author.id) != admin_id:
+            await ctx.reply(Messages.Discord.NO_PERMISSION, ephemeral=True)
+            return
+
+        try:
+            self.bot.reload_config()
+            await ctx.reply("設定とプロンプトを再読み込みしました。 ✅")
+            logger.info(f"Config reloaded by admin {ctx.author.id}/{ctx.author.name}")
+        except Exception as e:
+            logger.error(f"Failed to reload config: {e}", exc_info=True)
+            await ctx.reply(f"設定の再読み込みに失敗しました: {e}")
+
     @commands.hybrid_command(name="help", description="Display command help")
     async def help_command(self, ctx: commands.Context) -> None:
         prefix = self.bot.command_prefix
@@ -80,6 +99,7 @@ class GeneralCog(commands.Cog):
         )
         embed.add_field(name=f"{prefix}list または /list", value=Messages.Discord.CMD_LIST_DESC, inline=False)
         embed.add_field(name=f"{prefix}cancel [メッセージID] または /cancel", value=Messages.Discord.CMD_CANCEL_DESC, inline=False)
+        embed.add_field(name=f"{prefix}reload または /reload", value=Messages.Discord.CMD_RELOAD_DESC, inline=False)
         embed.add_field(name=f"{prefix}help または /help", value=Messages.Discord.CMD_HELP_DESC, inline=False)
         embed.set_footer(text=f"Version: {self.version} | マニュアル: https://inkuxuan.github.io/kokuchi-kun/")
         await ctx.reply(embed=embed)
