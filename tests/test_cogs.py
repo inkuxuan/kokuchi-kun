@@ -722,8 +722,8 @@ class TestCogs:
         event_title_field = next(f for f in embed.fields if f.name == Messages.Discord.FIELD_EVENT_TITLE)
         assert event_title_field.value == 'カレンダー用タイトル'
 
-    def test_build_booking_embed_hides_event_title_when_same(self, announcement_cog):
-        """Embed should not show event title field when it matches announcement title."""
+    def test_build_booking_embed_shows_same_title_as_event_title_when_same(self, announcement_cog):
+        """Embed should show announcement title as event title when they match."""
         result = AIProcessingResult(
             success=True,
             announcement_timestamp=4102444800,
@@ -734,11 +734,11 @@ class TestCogs:
             content='内容テスト',
         )
         embed = announcement_cog._build_booking_embed(result, 'job123')
-        field_names = [f.name for f in embed.fields]
-        assert Messages.Discord.FIELD_EVENT_TITLE not in field_names
+        event_title_field = next(f for f in embed.fields if f.name == Messages.Discord.FIELD_EVENT_TITLE)
+        assert event_title_field.value == '同じタイトル'
 
-    def test_build_booking_embed_hides_event_title_when_none(self, announcement_cog):
-        """Embed should not show event title field when event_title is None."""
+    def test_build_booking_embed_falls_back_to_title_when_event_title_none(self, announcement_cog):
+        """Embed should show announcement title as event title when event_title is None."""
         result = AIProcessingResult(
             success=True,
             announcement_timestamp=4102444800,
@@ -749,8 +749,8 @@ class TestCogs:
             content='内容テスト',
         )
         embed = announcement_cog._build_booking_embed(result, 'job123')
-        field_names = [f.name for f in embed.fields]
-        assert Messages.Discord.FIELD_EVENT_TITLE not in field_names
+        event_title_field = next(f for f in embed.fields if f.name == Messages.Discord.FIELD_EVENT_TITLE)
+        assert event_title_field.value == 'タイトル'
 
     # --- #18: Reload config tests ---
 

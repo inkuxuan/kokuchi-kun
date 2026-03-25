@@ -895,8 +895,7 @@ class AnnouncementCog(commands.Cog):
         embed.add_field(name="イベント終了", value=f"<t:{int(result.event_end_timestamp)}:F>", inline=False)
 
         embed.add_field(name=Messages.Discord.FIELD_TITLE, value=result.title, inline=False)
-        if result.event_title and result.event_title != result.title:
-            embed.add_field(name=Messages.Discord.FIELD_EVENT_TITLE, value=result.event_title, inline=False)
+        embed.add_field(name=Messages.Discord.FIELD_EVENT_TITLE, value=result.event_title or result.title, inline=False)
 
         content = result.content
         if len(content) > 1024:
