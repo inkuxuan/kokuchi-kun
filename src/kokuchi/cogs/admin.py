@@ -34,12 +34,23 @@ class AdminCog(commands.Cog):
         self.prefix: str = config['discord']['prefix']
         self.version: str = get_version()
 
+        # Bot-level admin user ID
+        self.admin_id: str | None = config['discord'].get('admin_id')
+
     def _get_guild_config(self, guild_id: str) -> dict | None:
         """Return the config for a guild, or None if not configured."""
         return self.guild_configs.get(guild_id)
 
+    def _is_bot_admin(self, user_id: int) -> bool:
+        """Check if a user is the bot-level admin."""
+        return self.admin_id is not None and str(user_id) == self.admin_id
+
     async def cog_check(self, ctx: commands.Context) -> bool:
         """Permission check that applies to all commands in this cog"""
+        # Bot admin bypasses all checks
+        if self._is_bot_admin(ctx.author.id):
+            return True
+
         # Check if in one of the monitored channels
         if str(ctx.channel.id) not in self._all_channel_ids:
             return False

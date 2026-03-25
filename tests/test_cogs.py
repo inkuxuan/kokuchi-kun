@@ -638,3 +638,169 @@ class TestCogs:
         edited_embed = bot_reply_msg.edit.call_args[1]['embed']
         assert edited_embed.title.startswith("✅")
 
+    # --- #74: Bot admin permission tests ---
+
+    BOT_ADMIN_ID = 555000555
+
+    @pytest.fixture
+    def config_with_bot_admin(self, mock_config):
+        """Config with bot admin_id set."""
+        mock_config['discord']['admin_id'] = str(self.BOT_ADMIN_ID)
+        return mock_config
+
+    @pytest.fixture
+    def mock_bot_admin_member(self):
+        """Create a mock member representing the bot admin (no admin role)."""
+        member = MagicMock()
+        member.id = self.BOT_ADMIN_ID
+        normal_role = MagicMock()
+        normal_role.id = 444555666  # Not the admin role
+        member.roles = [normal_role]
+        return member
+
+    def test_announcement_cog_is_admin_bot_admin(self, mock_bot, config_with_bot_admin, mock_ai_processor, mock_state_manager, mock_vrchat_api, mock_bot_admin_member):
+        """Bot admin should be recognized as admin even without the admin role."""
+        cog = AnnouncementCog(mock_bot, config_with_bot_admin, mock_ai_processor, mock_state_manager, mock_vrchat_api)
+        assert cog._is_admin(mock_bot_admin_member, str(TEST_ADMIN_ROLE_ID)) is True
+
+    def test_announcement_cog_is_admin_normal_member(self, announcement_cog, mock_normal_member):
+        """Normal member without admin role should not be recognized as admin."""
+        assert announcement_cog._is_admin(mock_normal_member, str(TEST_ADMIN_ROLE_ID)) is False
+
+    def test_announcement_cog_is_admin_role_member(self, announcement_cog, mock_admin_member):
+        """Member with admin role should be recognized as admin."""
+        assert announcement_cog._is_admin(mock_admin_member, str(TEST_ADMIN_ROLE_ID)) is True
+
+    def test_announcement_cog_is_admin_none_member(self, announcement_cog):
+        """None member should not be recognized as admin."""
+        assert announcement_cog._is_admin(None, str(TEST_ADMIN_ROLE_ID)) is False
+
+    @pytest.mark.asyncio
+    async def test_admin_cog_check_bot_admin_bypasses(self, mock_bot, config_with_bot_admin, mock_state_manager):
+        """Bot admin should pass cog_check even without admin role or monitored channel."""
+        cog = AdminCog(mock_bot, config_with_bot_admin, mock_state_manager)
+
+        ctx = MagicMock()
+        ctx.author = MagicMock()
+        ctx.author.id = self.BOT_ADMIN_ID
+        ctx.channel = MagicMock()
+        ctx.channel.id = 999999  # Not a monitored channel
+        ctx.guild = MagicMock()
+        ctx.guild.id = 999999  # Not a configured guild
+
+        result = await cog.cog_check(ctx)
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_admin_cog_check_normal_user_rejected_outside_channel(self, admin_cog):
+        """Normal user outside monitored channels should be rejected."""
+        ctx = MagicMock()
+        ctx.author = MagicMock()
+        ctx.author.id = 999888777
+        ctx.channel = MagicMock()
+        ctx.channel.id = 999999  # Not a monitored channel
+
+        result = await admin_cog.cog_check(ctx)
+        assert result is False
+
+    # --- #73: Event title in embed tests ---
+
+    def test_build_booking_embed_shows_event_title_when_different(self, announcement_cog):
+        """Embed should show event title field when it differs from announcement title."""
+        result = AIProcessingResult(
+            success=True,
+            announcement_timestamp=4102444800,
+            event_start_timestamp=4102444800 + 3600,
+            event_end_timestamp=4102444800 + 7200,
+            title='告知タイトル',
+            event_title='カレンダー用タイトル',
+            content='内容テスト',
+        )
+        embed = announcement_cog._build_booking_embed(result, 'job123')
+        field_names = [f.name for f in embed.fields]
+        assert Messages.Discord.FIELD_EVENT_TITLE in field_names
+        event_title_field = next(f for f in embed.fields if f.name == Messages.Discord.FIELD_EVENT_TITLE)
+        assert event_title_field.value == 'カレンダー用タイトル'
+
+    def test_build_booking_embed_shows_same_title_as_event_title_when_same(self, announcement_cog):
+        """Embed should show announcement title as event title when they match."""
+        result = AIProcessingResult(
+            success=True,
+            announcement_timestamp=4102444800,
+            event_start_timestamp=4102444800 + 3600,
+            event_end_timestamp=4102444800 + 7200,
+            title='同じタイトル',
+            event_title='同じタイトル',
+            content='内容テスト',
+        )
+        embed = announcement_cog._build_booking_embed(result, 'job123')
+        event_title_field = next(f for f in embed.fields if f.name == Messages.Discord.FIELD_EVENT_TITLE)
+        assert event_title_field.value == '同じタイトル'
+
+    def test_build_booking_embed_falls_back_to_title_when_event_title_none(self, announcement_cog):
+        """Embed should show announcement title as event title when event_title is None."""
+        result = AIProcessingResult(
+            success=True,
+            announcement_timestamp=4102444800,
+            event_start_timestamp=4102444800 + 3600,
+            event_end_timestamp=4102444800 + 7200,
+            title='タイトル',
+            event_title=None,
+            content='内容テスト',
+        )
+        embed = announcement_cog._build_booking_embed(result, 'job123')
+        event_title_field = next(f for f in embed.fields if f.name == Messages.Discord.FIELD_EVENT_TITLE)
+        assert event_title_field.value == 'タイトル'
+
+    # --- #18: Reload config tests ---
+
+    @pytest.mark.asyncio
+    async def test_reload_command_rejected_for_non_admin(self, general_cog):
+        """Reload should reject non-admin users."""
+        reply = AsyncMock()
+        ctx = MagicMock()
+        ctx.author = MagicMock()
+        ctx.author.id = 999888777  # Not the bot admin
+        ctx.reply = reply
+
+        await general_cog.reload_config(general_cog, ctx)
+
+        reply.assert_called_once()
+        args, kwargs = reply.call_args
+        assert args[0] == Messages.Discord.NO_PERMISSION
+
+    @pytest.mark.asyncio
+    async def test_reload_command_accepted_for_admin(self, general_cog):
+        """Reload should call bot.reload_config for bot admin."""
+        general_cog.bot.reload_config = MagicMock()
+
+        reply = AsyncMock()
+        ctx = MagicMock()
+        ctx.author = MagicMock()
+        ctx.author.id = self.TEST_ADMIN_USER_ID
+        ctx.reply = reply
+
+        await general_cog.reload_config(general_cog, ctx)
+
+        general_cog.bot.reload_config.assert_called_once()
+        reply.assert_called_once()
+        args, _ = reply.call_args
+        assert "✅" in args[0]
+
+    @pytest.mark.asyncio
+    async def test_reload_command_handles_error(self, general_cog):
+        """Reload should report errors gracefully."""
+        general_cog.bot.reload_config = MagicMock(side_effect=FileNotFoundError("config.yaml not found"))
+
+        reply = AsyncMock()
+        ctx = MagicMock()
+        ctx.author = MagicMock()
+        ctx.author.id = self.TEST_ADMIN_USER_ID
+        ctx.reply = reply
+
+        await general_cog.reload_config(general_cog, ctx)
+
+        reply.assert_called_once()
+        args, _ = reply.call_args
+        assert "失敗" in args[0]
+

@@ -630,8 +630,12 @@ class AnnouncementCog(commands.Cog):
             return None
 
     def _is_admin(self, member: discord.Member | None, admin_role_id: str | None) -> bool:
-        """Check if a member has the admin role."""
-        if not member or admin_role_id is None:
+        """Check if a member has the admin role or is the bot admin."""
+        if not member:
+            return False
+        if self.admin_id and str(member.id) == self.admin_id:
+            return True
+        if admin_role_id is None:
             return False
         return admin_role_id in [str(role.id) for role in member.roles]
 
@@ -891,6 +895,7 @@ class AnnouncementCog(commands.Cog):
         embed.add_field(name="イベント終了", value=f"<t:{int(result.event_end_timestamp)}:F>", inline=False)
 
         embed.add_field(name=Messages.Discord.FIELD_TITLE, value=result.title, inline=False)
+        embed.add_field(name=Messages.Discord.FIELD_EVENT_TITLE, value=result.event_title or result.title, inline=False)
 
         content = result.content
         if len(content) > 1024:
