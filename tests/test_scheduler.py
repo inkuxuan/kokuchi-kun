@@ -276,6 +276,28 @@ async def test_list_jobs_excludes_non_pending(scheduler):
     assert active_jobs[0].id == job_id1
 
 @pytest.mark.asyncio
+async def test_list_jobs_sorted_by_timestamp(scheduler):
+    """list_jobs should return jobs sorted by timestamp."""
+    base = int(time.time()) + 3600
+
+    # Schedule jobs out of order: later first, then earlier
+    await scheduler.schedule_announcement(
+        base + 200, "Later", "Content", "msg_1", "111111111", group_id="grp_test"
+    )
+    await scheduler.schedule_announcement(
+        base, "Earliest", "Content", "msg_2", "111111111", group_id="grp_test"
+    )
+    await scheduler.schedule_announcement(
+        base + 100, "Middle", "Content", "msg_3", "111111111", group_id="grp_test"
+    )
+
+    active_jobs = scheduler.list_jobs()
+    assert len(active_jobs) == 3
+    assert active_jobs[0].title == "Earliest"
+    assert active_jobs[1].title == "Middle"
+    assert active_jobs[2].title == "Later"
+
+@pytest.mark.asyncio
 async def test_mark_job_success(scheduler):
     """mark_job_success should set status and remove from APScheduler."""
     timestamp = int(time.time()) + 3600
