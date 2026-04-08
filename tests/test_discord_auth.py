@@ -29,7 +29,7 @@ class TestDiscordAuth:
         intents = discord.Intents.default()
         intents.message_content = True
         intents.members = True
-        self.bot = commands.Bot(command_prefix="!", intents=intents)
+        self.bot = commands.Bot(command_prefix=commands.when_mentioned, intents=intents)
         
     def teardown_method(self):
         """Clean up after each test."""

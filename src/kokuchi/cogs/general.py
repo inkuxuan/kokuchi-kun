@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import discord
+from discord import app_commands
 from discord.ext import commands
 from kokuchi.common.version import get_version
 from kokuchi.common.messages import Messages
@@ -20,8 +21,8 @@ class GeneralCog(commands.Cog):
         self.state_manager = state_manager
         self.version = get_version()
 
-    @commands.hybrid_command(name="ping", description="Check if the bot is alive and get its version")
-    async def ping(self, ctx: commands.Context) -> None:
+    @app_commands.command(name="ping", description="Check if the bot is alive and get its version")
+    async def ping(self, interaction: discord.Interaction) -> None:
         lines = [f"Kokuchi-kun Version {self.version}"]
 
         if self.vrchat_api.authenticated and self.vrchat_api.current_user:
@@ -30,34 +31,36 @@ class GeneralCog(commands.Cog):
         else:
             lines.append("VRChat: not logged in ❌")
 
-        if ctx.guild:
-            gctx = self.state_manager.get_guild_context(str(ctx.guild.id))
+        if interaction.guild:
+            gctx = self.state_manager.get_guild_context(str(interaction.guild.id))
             group_id = gctx.group_id if gctx else None
             if group_id:
                 group_result = await self.vrchat_api.get_group(group_id)
                 if group_result.success:
                     lines.append(f"Group: {group_result.data['name']}")
 
-        await ctx.reply("\n".join(lines))
+        await interaction.response.send_message("\n".join(lines))
 
-    @commands.hybrid_command(name="version", description="Get the current bot version")
-    async def version_cmd(self, ctx: commands.Context) -> None:
-        await ctx.reply(f"Kokuchi-kun Version {self.version}")
+    @app_commands.command(name="version", description="Get the current bot version")
+    async def version_cmd(self, interaction: discord.Interaction) -> None:
+        await interaction.response.send_message(f"Kokuchi-kun Version {self.version}")
 
-    @commands.command(name="listall")
-    async def list_all_jobs(self, ctx: commands.Context) -> None:
+    @app_commands.command(name="listall", description="List all scheduled jobs across all guilds (bot admin only)")
+    @app_commands.allowed_contexts(guilds=False, dms=True, private_channels=False)
+    @app_commands.allowed_installs(guilds=True, users=True)
+    async def list_all_jobs(self, interaction: discord.Interaction) -> None:
         """DM-only: list all scheduled jobs across all guilds (bot admin only)"""
-        if not isinstance(ctx.channel, discord.DMChannel):
+        if interaction.guild is not None:
             return
 
         admin_id = self.bot.config.get('discord', {}).get('admin_id')
-        if not admin_id or str(ctx.author.id) != admin_id:
-            await ctx.reply("このコマンドはBotの管理者専用です。")
+        if not admin_id or str(interaction.user.id) != admin_id:
+            await interaction.response.send_message("このコマンドはBotの管理者専用です。")
             return
 
         jobs = self.state_manager.scheduler.list_jobs()
         if not jobs:
-            await ctx.reply("予約されている告知はありません。")
+            await interaction.response.send_message("予約されている告知はありません。")
             return
 
         embed = discord.Embed(title="全サーバー 予約告知一覧", color=discord.Color.blue())
@@ -72,34 +75,33 @@ class GeneralCog(commands.Cog):
                 value=f"サーバー: {guild_name}\nID: {job.id}\n{content}",
                 inline=False
             )
-        await ctx.reply(embed=embed)
+        await interaction.response.send_message(embed=embed)
 
-    @commands.hybrid_command(name="reload", description="Reload config and prompt (bot admin only)")
-    async def reload_config(self, ctx: commands.Context) -> None:
+    @app_commands.command(name="reload", description="Reload config and prompt (bot admin only)")
+    async def reload_config(self, interaction: discord.Interaction) -> None:
         """Reload config.yaml and prompt file without restarting the bot."""
         admin_id = self.bot.config.get('discord', {}).get('admin_id')
-        if not admin_id or str(ctx.author.id) != admin_id:
-            await ctx.reply(Messages.Discord.NO_PERMISSION, ephemeral=True)
+        if not admin_id or str(interaction.user.id) != admin_id:
+            await interaction.response.send_message(Messages.Discord.NO_PERMISSION, ephemeral=True)
             return
 
         try:
             self.bot.reload_config()
-            await ctx.reply("設定とプロンプトを再読み込みしました。 ✅")
-            logger.info(f"Config reloaded by admin {ctx.author.id}/{ctx.author.name}")
+            await interaction.response.send_message("設定とプロンプトを再読み込みしました。 ✅")
+            logger.info(f"Config reloaded by admin {interaction.user.id}/{interaction.user.name}")
         except Exception as e:
             logger.error(f"Failed to reload config: {e}", exc_info=True)
-            await ctx.reply(f"設定の再読み込みに失敗しました: {e}")
+            await interaction.response.send_message(f"設定の再読み込みに失敗しました: {e}")
 
-    @commands.hybrid_command(name="help", description="Display command help")
-    async def help_command(self, ctx: commands.Context) -> None:
-        prefix = self.bot.command_prefix
+    @app_commands.command(name="help", description="Display command help")
+    async def help_command(self, interaction: discord.Interaction) -> None:
         embed = discord.Embed(
             title=Messages.Discord.CMD_LIST_TITLE,
             color=discord.Color.blue()
         )
-        embed.add_field(name=f"{prefix}list または /list", value=Messages.Discord.CMD_LIST_DESC, inline=False)
-        embed.add_field(name=f"{prefix}cancel [メッセージID] または /cancel", value=Messages.Discord.CMD_CANCEL_DESC, inline=False)
-        embed.add_field(name=f"{prefix}reload または /reload", value=Messages.Discord.CMD_RELOAD_DESC, inline=False)
-        embed.add_field(name=f"{prefix}help または /help", value=Messages.Discord.CMD_HELP_DESC, inline=False)
+        embed.add_field(name="/list", value=Messages.Discord.CMD_LIST_DESC, inline=False)
+        embed.add_field(name="/cancel [メッセージID]", value=Messages.Discord.CMD_CANCEL_DESC, inline=False)
+        embed.add_field(name="/reload", value=Messages.Discord.CMD_RELOAD_DESC, inline=False)
+        embed.add_field(name="/help", value=Messages.Discord.CMD_HELP_DESC, inline=False)
         embed.set_footer(text=f"Version: {self.version} | マニュアル: https://inkuxuan.github.io/kokuchi-kun/")
-        await ctx.reply(embed=embed)
+        await interaction.response.send_message(embed=embed)

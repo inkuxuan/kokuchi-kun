@@ -1,5 +1,4 @@
 discord:
-  prefix: "!"
   seen_reaction_emoji: "👀"
   approval_reaction_emoji: "👍"
   fast_forward_emoji: "⏩"

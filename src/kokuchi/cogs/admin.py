@@ -31,7 +31,6 @@ class AdminCog(commands.Cog):
         for guild_conf in self.guild_configs.values():
             self._all_channel_ids.update(guild_conf.get('channel_ids', []))
 
-        self.prefix: str = config['discord']['prefix']
         self.version: str = get_version()
 
         # Bot-level admin user ID
@@ -45,18 +44,18 @@ class AdminCog(commands.Cog):
         """Check if a user is the bot-level admin."""
         return self.admin_id is not None and str(user_id) == self.admin_id
 
-    async def cog_check(self, ctx: commands.Context) -> bool:
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
         """Permission check that applies to all commands in this cog"""
         # Bot admin bypasses all checks
-        if self._is_bot_admin(ctx.author.id):
+        if self._is_bot_admin(interaction.user.id):
             return True
 
         # Check if in one of the monitored channels
-        if str(ctx.channel.id) not in self._all_channel_ids:
+        if str(interaction.channel.id) not in self._all_channel_ids:
             return False
 
         # Get the guild-specific admin_role_id
-        guild_id = str(ctx.guild.id)
+        guild_id = str(interaction.guild.id)
         guild_conf = self._get_guild_config(guild_id)
         if not guild_conf:
             return False
@@ -65,19 +64,19 @@ class AdminCog(commands.Cog):
         if admin_role_id is None:
             return False
 
-        return admin_role_id in [str(role.id) for role in ctx.author.roles]
+        return admin_role_id in [str(role.id) for role in interaction.user.roles]
 
-    @commands.hybrid_command(
+    @app_commands.command(
         name="list",
         description="List all scheduled announcements"
     )
-    async def list_jobs(self, ctx: commands.Context) -> None:
+    async def list_jobs(self, interaction: discord.Interaction) -> None:
         """List all scheduled announcements for the current guild"""
-        guild_id = str(ctx.guild.id)
+        guild_id = str(interaction.guild.id)
         jobs = self.state_manager.scheduler.list_jobs(guild_id=guild_id)
 
         if not jobs:
-            await ctx.reply(Messages.Discord.NO_SCHEDULED_JOBS)
+            await interaction.response.send_message(Messages.Discord.NO_SCHEDULED_JOBS)
             return
 
         embed = discord.Embed(
@@ -100,24 +99,24 @@ class AdminCog(commands.Cog):
                 inline=False
             )
 
-        await ctx.reply(embed=embed)
+        await interaction.response.send_message(embed=embed)
 
-    @commands.hybrid_command(
+    @app_commands.command(
         name="cancel",
         description="Cancel a scheduled announcement"
     )
-    async def cancel_job(self, ctx: commands.Context, message_id: str) -> None:
+    async def cancel_job(self, interaction: discord.Interaction, message_id: str) -> None:
         """Cancel a scheduled announcement by message ID"""
         # Verify the job belongs to this guild before cancelling
-        guild_id = str(ctx.guild.id)
+        guild_id = str(interaction.guild.id)
         job = self.state_manager.scheduler.get_job(message_id)
         if job is None or job.guild_id != guild_id:
-            await ctx.reply(Messages.Discord.JOB_NOT_FOUND.format(message_id))
+            await interaction.response.send_message(Messages.Discord.JOB_NOT_FOUND.format(message_id))
             return
 
         # Only allow cancelling active, missed, or failed jobs
         if job.status not in ('pending', 'missed', 'failed'):
-            await ctx.reply(Messages.Discord.JOB_NOT_FOUND.format(message_id))
+            await interaction.response.send_message(Messages.Discord.JOB_NOT_FOUND.format(message_id))
             return
 
         # Read bot reply and channel info before cancelling
@@ -139,11 +138,11 @@ class AdminCog(commands.Cog):
                         await msg.delete()
                     except Exception as e:
                         logger.error(f"Failed to delete bot reply {bot_reply_id} on cancel: {e}")
+            await interaction.response.send_message(Messages.Discord.JOB_CANCELLED.format(message_id))
             if deleted_calendar:
-                await ctx.send(Messages.Discord.CALENDAR_DELETED_WITH_CANCEL)
-            await ctx.reply(Messages.Discord.JOB_CANCELLED.format(message_id))
+                await interaction.followup.send(Messages.Discord.CALENDAR_DELETED_WITH_CANCEL)
         else:
-            await ctx.reply(Messages.Discord.JOB_NOT_FOUND.format(message_id))
+            await interaction.response.send_message(Messages.Discord.JOB_NOT_FOUND.format(message_id))
 
     async def cog_app_command_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError) -> None:
         """Handle errors from slash commands"""
