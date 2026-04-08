@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 import warnings
 import yaml
 import os
@@ -392,13 +393,20 @@ async def main() -> None:
             logger.error(Messages.Log.DISCORD_TOKEN_NOT_FOUND)
             return
         await bot.start(bot.config['discord']['token'])
-    except Exception as e:
-        logger.error(Messages.Log.BOT_START_ERROR.format(e))
-        logger.error(f"Stack trace:\n{traceback.format_exc()}")
     finally:
         # Clean up
         if hasattr(bot, 'vrchat_api'):
             bot.vrchat_api.close()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    while True:
+        try:
+            asyncio.run(main())
+        except KeyboardInterrupt:
+            break
+        except Exception as e:
+            logger.error(f"Critical error, restarting in 3 seconds: {e}")
+            logger.error(f"Stack trace:\n{traceback.format_exc()}")
+        else:
+            break  # Clean exit from main(), no restart needed
+        time.sleep(3)
