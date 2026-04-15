@@ -114,7 +114,7 @@ To cancel a scheduled announcement, use any of these methods:
 |--------|-----|
 | Delete the original message | Delete your request message in Discord |
 | Remove 👍 | Admin removes the approval reaction |
-| Use a command | Run `/cancel` or `!cancel <job_id>` |
+| Use a command | Run `/cancel <job_id>` |
 
 ![The bot's confirmation reply for cancel](/images/cancel-command.png)
 
@@ -125,5 +125,5 @@ If a calendar event was created, it is automatically deleted when the announceme
 ## Learn more
 
 - [Reactions Reference](./reactions) — what each reaction does
-- [Commands](./commands) — available slash and prefix commands
+- [Commands](./commands) — available slash commands
 - [FAQ](./faq) — troubleshooting common issues

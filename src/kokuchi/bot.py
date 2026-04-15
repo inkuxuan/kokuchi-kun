@@ -90,7 +90,7 @@ class VRChatAnnounceBot(commands.Bot):
         intents.reactions = True
 
         super().__init__(
-            command_prefix=config['discord']['prefix'],
+            command_prefix=commands.when_mentioned,
             intents=intents,
             help_command=None  # Disable default help command
         )
@@ -340,8 +340,6 @@ class VRChatAnnounceBot(commands.Bot):
         """Handle incoming messages"""
         if message.author.bot:
             return
-
-        await self.process_commands(message)
 
     @tasks.loop(minutes=60)
     async def heartbeat_check(self) -> None:

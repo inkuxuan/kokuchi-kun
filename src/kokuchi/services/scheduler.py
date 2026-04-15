@@ -270,6 +270,7 @@ class Scheduler:
             if job.status == 'pending' and self.scheduler.get_job(job.id) is not None:
                 if guild_id is None or job.guild_id == guild_id:
                     active_jobs.append(job)
+        active_jobs.sort(key=lambda j: j.timestamp)
         return active_jobs
 
     def get_job(self, job_id: str) -> JobData | None:

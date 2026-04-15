@@ -35,7 +35,6 @@ class TestCogs:
         """Create a mock configuration using the new guilds format with str IDs."""
         return {
             'discord': {
-                'prefix': '!',
                 'seen_reaction_emoji': "👀",
                 'approval_reaction_emoji': "👍",
                 'fast_forward_emoji': "⏩",
@@ -187,6 +186,20 @@ class TestCogs:
         return ctx
 
     @pytest.fixture
+    def mock_interaction(self, mock_message, mock_bot):
+        """Create a mock interaction for slash commands."""
+        interaction = MagicMock()
+        interaction.user = mock_message.author
+        interaction.channel = mock_message.channel
+        interaction.guild = mock_message.guild
+        interaction.client = mock_bot
+        interaction.response = AsyncMock()
+        interaction.response.send_message = AsyncMock()
+        interaction.followup = AsyncMock()
+        interaction.followup.send = AsyncMock()
+        return interaction
+
+    @pytest.fixture
     def mock_admin_member(self):
         """Create a mock member with admin role."""
         member = MagicMock()
@@ -207,23 +220,23 @@ class TestCogs:
     # AdminCog Tests
 
     @pytest.mark.asyncio
-    async def test_admin_list_command(self, admin_cog, mock_context, mock_admin_member):
+    async def test_admin_list_command(self, admin_cog, mock_interaction, mock_admin_member):
         """Test the list command in AdminCog."""
-        mock_context.author = mock_admin_member
+        mock_interaction.user = mock_admin_member
 
-        await admin_cog.list_jobs(admin_cog, mock_context)
+        await admin_cog.list_jobs.callback(admin_cog, mock_interaction)
 
         # Verify scheduler list_jobs was called via state_manager
         admin_cog.state_manager.scheduler.list_jobs.assert_called_once()
 
-        assert mock_context.send.called or mock_context.reply.called
+        mock_interaction.response.send_message.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_admin_cancel_command(self, admin_cog, mock_context, mock_admin_member, mock_persistence):
+    async def test_admin_cancel_command(self, admin_cog, mock_interaction, mock_admin_member, mock_persistence):
         """Test the cancel command in AdminCog."""
-        mock_context.author = mock_admin_member
+        mock_interaction.user = mock_admin_member
 
-        await admin_cog.cancel_job(admin_cog, mock_context, "job1")
+        await admin_cog.cancel_job.callback(admin_cog, mock_interaction, "job1")
 
         # Verify cancel_job was called with the exact job_id
         admin_cog.state_manager.scheduler.cancel_job.assert_called_with("job1")
@@ -232,45 +245,45 @@ class TestCogs:
         mock_persistence.save_announcement.assert_called()
 
         # Verify success message
-        mock_context.reply.assert_called_once()
-        args, _ = mock_context.reply.call_args
+        mock_interaction.response.send_message.assert_called_once()
+        args, _ = mock_interaction.response.send_message.call_args
         assert Messages.Discord.JOB_CANCELLED.format("job1") in args[0]
 
     @pytest.mark.asyncio
-    async def test_admin_cancel_cross_guild_rejected(self, admin_cog, mock_context, mock_admin_member):
+    async def test_admin_cancel_cross_guild_rejected(self, admin_cog, mock_interaction, mock_admin_member):
         """Test that cancelling a job belonging to a different guild is rejected."""
-        mock_context.author = mock_admin_member
+        mock_interaction.user = mock_admin_member
 
         other_guild_id = 999999999
-        mock_context.guild.id = other_guild_id
+        mock_interaction.guild.id = other_guild_id
 
-        await admin_cog.cancel_job(admin_cog, mock_context, "job1")
+        await admin_cog.cancel_job.callback(admin_cog, mock_interaction, "job1")
 
         admin_cog.state_manager.scheduler.cancel_job_by_message_id.assert_not_called()
 
-        mock_context.reply.assert_called_once()
-        args, _ = mock_context.reply.call_args
+        mock_interaction.response.send_message.assert_called_once()
+        args, _ = mock_interaction.response.send_message.call_args
         assert Messages.Discord.JOB_NOT_FOUND.format("job1") in args[0]
 
     @pytest.mark.asyncio
-    async def test_admin_cancel_nonexistent_job_rejected(self, admin_cog, mock_context, mock_admin_member):
+    async def test_admin_cancel_nonexistent_job_rejected(self, admin_cog, mock_interaction, mock_admin_member):
         """Test that cancelling a nonexistent job is rejected."""
-        mock_context.author = mock_admin_member
+        mock_interaction.user = mock_admin_member
 
         admin_cog.state_manager.scheduler.get_job = MagicMock(return_value=None)
 
-        await admin_cog.cancel_job(admin_cog, mock_context, "nonexistent_job")
+        await admin_cog.cancel_job.callback(admin_cog, mock_interaction, "nonexistent_job")
 
         admin_cog.state_manager.scheduler.cancel_job_by_message_id.assert_not_called()
 
-        mock_context.reply.assert_called_once()
-        args, _ = mock_context.reply.call_args
+        mock_interaction.response.send_message.assert_called_once()
+        args, _ = mock_interaction.response.send_message.call_args
         assert Messages.Discord.JOB_NOT_FOUND.format("nonexistent_job") in args[0]
 
     @pytest.mark.asyncio
-    async def test_admin_cancel_success_job_rejected(self, admin_cog, mock_context, mock_admin_member):
+    async def test_admin_cancel_success_job_rejected(self, admin_cog, mock_interaction, mock_admin_member):
         """Test that cancelling a successfully completed job is rejected."""
-        mock_context.author = mock_admin_member
+        mock_interaction.user = mock_admin_member
 
         admin_cog.state_manager.scheduler.get_job = MagicMock(return_value=JobData(
             id='job_done',
@@ -283,15 +296,15 @@ class TestCogs:
             status='success',
         ))
 
-        await admin_cog.cancel_job(admin_cog, mock_context, "job_done")
+        await admin_cog.cancel_job.callback(admin_cog, mock_interaction, "job_done")
 
         admin_cog.state_manager.scheduler.cancel_job_by_message_id.assert_not_called()
-        mock_context.reply.assert_called_once()
+        mock_interaction.response.send_message.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_admin_cancel_cancelled_job_rejected(self, admin_cog, mock_context, mock_admin_member):
+    async def test_admin_cancel_cancelled_job_rejected(self, admin_cog, mock_interaction, mock_admin_member):
         """Test that cancelling an already-cancelled job is rejected."""
-        mock_context.author = mock_admin_member
+        mock_interaction.user = mock_admin_member
 
         admin_cog.state_manager.scheduler.get_job = MagicMock(return_value=JobData(
             id='job_cancelled',
@@ -304,10 +317,10 @@ class TestCogs:
             status='cancelled',
         ))
 
-        await admin_cog.cancel_job(admin_cog, mock_context, "job_cancelled")
+        await admin_cog.cancel_job.callback(admin_cog, mock_interaction, "job_cancelled")
 
         admin_cog.state_manager.scheduler.cancel_job_by_message_id.assert_not_called()
-        mock_context.reply.assert_called_once()
+        mock_interaction.response.send_message.assert_called_once()
 
     # AnnouncementCog Tests
 
@@ -483,7 +496,6 @@ class TestCogs:
         """Test that a disabled guild rejects new announcement requests."""
         config = {
             'discord': {
-                'prefix': '!',
                 'seen_reaction_emoji': "👀",
                 'approval_reaction_emoji': "👍",
                 'fast_forward_emoji': "⏩",
@@ -524,7 +536,6 @@ class TestCogs:
         """Bot mock with admin_id set in config."""
         mock_config['discord']['admin_id'] = str(self.TEST_ADMIN_USER_ID)
         mock_bot.config = mock_config
-        mock_bot.command_prefix = "!"
         return mock_bot
 
     @pytest.fixture
@@ -532,38 +543,38 @@ class TestCogs:
         """Create a GeneralCog instance with mocks."""
         return GeneralCog(mock_bot_with_admin, mock_vrchat_api, mock_state_manager)
 
-    def _make_dm_context(self, user_id: int, reply_mock):
-        ctx = MagicMock()
-        ctx.channel = MagicMock(spec=discord.DMChannel)
-        ctx.author = MagicMock()
-        ctx.author.id = user_id
-        ctx.reply = reply_mock
-        return ctx
+    def _make_dm_interaction(self, user_id: int):
+        interaction = MagicMock()
+        interaction.guild = None  # DM has no guild
+        interaction.user = MagicMock()
+        interaction.user.id = user_id
+        interaction.response = AsyncMock()
+        interaction.response.send_message = AsyncMock()
+        return interaction
 
-    def _make_guild_context(self, user_id: int, reply_mock):
-        ctx = MagicMock()
-        ctx.channel = MagicMock()  # not a DMChannel
-        ctx.author = MagicMock()
-        ctx.author.id = user_id
-        ctx.reply = reply_mock
-        return ctx
+    def _make_guild_interaction(self, user_id: int):
+        interaction = MagicMock()
+        interaction.guild = MagicMock()  # has a guild
+        interaction.user = MagicMock()
+        interaction.user.id = user_id
+        interaction.response = AsyncMock()
+        interaction.response.send_message = AsyncMock()
+        return interaction
 
     @pytest.mark.asyncio
     async def test_listall_ignored_in_guild_channel(self, general_cog):
         """listall should silently do nothing when not in a DM."""
-        reply = AsyncMock()
-        ctx = self._make_guild_context(self.TEST_ADMIN_USER_ID, reply)
-        await general_cog.list_all_jobs(general_cog, ctx)
-        reply.assert_not_called()
+        interaction = self._make_guild_interaction(self.TEST_ADMIN_USER_ID)
+        await general_cog.list_all_jobs.callback(general_cog, interaction)
+        interaction.response.send_message.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_listall_rejected_for_non_admin(self, general_cog):
         """listall should reject non-admin users in DMs."""
-        reply = AsyncMock()
-        ctx = self._make_dm_context(user_id=999888777, reply_mock=reply)
-        await general_cog.list_all_jobs(general_cog, ctx)
-        reply.assert_called_once()
-        args, _ = reply.call_args
+        interaction = self._make_dm_interaction(user_id=999888777)
+        await general_cog.list_all_jobs.callback(general_cog, interaction)
+        interaction.response.send_message.assert_called_once()
+        args, _ = interaction.response.send_message.call_args
         assert "管理者" in args[0]
 
     @pytest.mark.asyncio
@@ -584,17 +595,13 @@ class TestCogs:
         ]
         general_cog.bot.get_guild = MagicMock(return_value=None)
 
-        reply = AsyncMock()
-        ctx = self._make_dm_context(user_id=self.TEST_ADMIN_USER_ID, reply_mock=reply)
-        await general_cog.list_all_jobs(general_cog, ctx)
+        interaction = self._make_dm_interaction(user_id=self.TEST_ADMIN_USER_ID)
+        await general_cog.list_all_jobs.callback(general_cog, interaction)
 
         # Called with no guild_id filter
         mock_scheduler.list_jobs.assert_called_once_with()
-        reply.assert_called_once()
-        _, kwargs = reply.call_args
-        embed = kwargs.get("embed") or reply.call_args[0][0] if reply.call_args[0] else None
-        # embed is passed as keyword arg
-        call_kwargs = reply.call_args[1] if reply.call_args[1] else {}
+        interaction.response.send_message.assert_called_once()
+        _, call_kwargs = interaction.response.send_message.call_args
         assert "embed" in call_kwargs
         embed = call_kwargs["embed"]
         assert len(embed.fields) == 2
@@ -603,11 +610,10 @@ class TestCogs:
     async def test_listall_no_jobs_message(self, general_cog, mock_scheduler):
         """listall should reply with a no-jobs message when scheduler is empty."""
         mock_scheduler.list_jobs.return_value = []
-        reply = AsyncMock()
-        ctx = self._make_dm_context(user_id=self.TEST_ADMIN_USER_ID, reply_mock=reply)
-        await general_cog.list_all_jobs(general_cog, ctx)
-        reply.assert_called_once()
-        args, _ = reply.call_args
+        interaction = self._make_dm_interaction(user_id=self.TEST_ADMIN_USER_ID)
+        await general_cog.list_all_jobs.callback(general_cog, interaction)
+        interaction.response.send_message.assert_called_once()
+        args, _ = interaction.response.send_message.call_args
         assert "ありません" in args[0]
     @pytest.mark.asyncio
     async def test_on_job_complete_success_updates_embed(self, announcement_cog, mock_persistence):
@@ -677,30 +683,30 @@ class TestCogs:
 
     @pytest.mark.asyncio
     async def test_admin_cog_check_bot_admin_bypasses(self, mock_bot, config_with_bot_admin, mock_state_manager):
-        """Bot admin should pass cog_check even without admin role or monitored channel."""
+        """Bot admin should pass interaction_check even without admin role or monitored channel."""
         cog = AdminCog(mock_bot, config_with_bot_admin, mock_state_manager)
 
-        ctx = MagicMock()
-        ctx.author = MagicMock()
-        ctx.author.id = self.BOT_ADMIN_ID
-        ctx.channel = MagicMock()
-        ctx.channel.id = 999999  # Not a monitored channel
-        ctx.guild = MagicMock()
-        ctx.guild.id = 999999  # Not a configured guild
+        interaction = MagicMock()
+        interaction.user = MagicMock()
+        interaction.user.id = self.BOT_ADMIN_ID
+        interaction.channel = MagicMock()
+        interaction.channel.id = 999999  # Not a monitored channel
+        interaction.guild = MagicMock()
+        interaction.guild.id = 999999  # Not a configured guild
 
-        result = await cog.cog_check(ctx)
+        result = await cog.interaction_check(interaction)
         assert result is True
 
     @pytest.mark.asyncio
     async def test_admin_cog_check_normal_user_rejected_outside_channel(self, admin_cog):
         """Normal user outside monitored channels should be rejected."""
-        ctx = MagicMock()
-        ctx.author = MagicMock()
-        ctx.author.id = 999888777
-        ctx.channel = MagicMock()
-        ctx.channel.id = 999999  # Not a monitored channel
+        interaction = MagicMock()
+        interaction.user = MagicMock()
+        interaction.user.id = 999888777
+        interaction.channel = MagicMock()
+        interaction.channel.id = 999999  # Not a monitored channel
 
-        result = await admin_cog.cog_check(ctx)
+        result = await admin_cog.interaction_check(interaction)
         assert result is False
 
     # --- #73: Event title in embed tests ---
@@ -757,16 +763,16 @@ class TestCogs:
     @pytest.mark.asyncio
     async def test_reload_command_rejected_for_non_admin(self, general_cog):
         """Reload should reject non-admin users."""
-        reply = AsyncMock()
-        ctx = MagicMock()
-        ctx.author = MagicMock()
-        ctx.author.id = 999888777  # Not the bot admin
-        ctx.reply = reply
+        interaction = MagicMock()
+        interaction.user = MagicMock()
+        interaction.user.id = 999888777  # Not the bot admin
+        interaction.response = AsyncMock()
+        interaction.response.send_message = AsyncMock()
 
-        await general_cog.reload_config(general_cog, ctx)
+        await general_cog.reload_config.callback(general_cog, interaction)
 
-        reply.assert_called_once()
-        args, kwargs = reply.call_args
+        interaction.response.send_message.assert_called_once()
+        args, kwargs = interaction.response.send_message.call_args
         assert args[0] == Messages.Discord.NO_PERMISSION
 
     @pytest.mark.asyncio
@@ -774,17 +780,18 @@ class TestCogs:
         """Reload should call bot.reload_config for bot admin."""
         general_cog.bot.reload_config = MagicMock()
 
-        reply = AsyncMock()
-        ctx = MagicMock()
-        ctx.author = MagicMock()
-        ctx.author.id = self.TEST_ADMIN_USER_ID
-        ctx.reply = reply
+        interaction = MagicMock()
+        interaction.user = MagicMock()
+        interaction.user.id = self.TEST_ADMIN_USER_ID
+        interaction.user.name = "admin"
+        interaction.response = AsyncMock()
+        interaction.response.send_message = AsyncMock()
 
-        await general_cog.reload_config(general_cog, ctx)
+        await general_cog.reload_config.callback(general_cog, interaction)
 
         general_cog.bot.reload_config.assert_called_once()
-        reply.assert_called_once()
-        args, _ = reply.call_args
+        interaction.response.send_message.assert_called_once()
+        args, _ = interaction.response.send_message.call_args
         assert "✅" in args[0]
 
     @pytest.mark.asyncio
@@ -792,15 +799,16 @@ class TestCogs:
         """Reload should report errors gracefully."""
         general_cog.bot.reload_config = MagicMock(side_effect=FileNotFoundError("config.yaml not found"))
 
-        reply = AsyncMock()
-        ctx = MagicMock()
-        ctx.author = MagicMock()
-        ctx.author.id = self.TEST_ADMIN_USER_ID
-        ctx.reply = reply
+        interaction = MagicMock()
+        interaction.user = MagicMock()
+        interaction.user.id = self.TEST_ADMIN_USER_ID
+        interaction.user.name = "admin"
+        interaction.response = AsyncMock()
+        interaction.response.send_message = AsyncMock()
 
-        await general_cog.reload_config(general_cog, ctx)
+        await general_cog.reload_config.callback(general_cog, interaction)
 
-        reply.assert_called_once()
-        args, _ = reply.call_args
+        interaction.response.send_message.assert_called_once()
+        args, _ = interaction.response.send_message.call_args
         assert "失敗" in args[0]
 
