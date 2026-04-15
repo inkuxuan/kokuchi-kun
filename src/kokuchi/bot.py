@@ -384,17 +384,28 @@ async def main() -> None:
         logger.error(f"Failed to load prompt file: {e}")
         return
 
-    # Create and start the bot
-    bot = VRChatAnnounceBot(config, args)
-    try:
-        if not bot.config['discord']['token']:
-            logger.error(Messages.Log.DISCORD_TOKEN_NOT_FOUND)
-            return
-        await bot.start(bot.config['discord']['token'])
-    finally:
-        # Clean up
-        if hasattr(bot, 'vrchat_api'):
-            bot.vrchat_api.close()
+    # Create and start the bot, retrying on transient connection errors
+    retry_delay = 5
+    max_retry_delay = 60
+    while True:
+        bot = VRChatAnnounceBot(config, args)
+        try:
+            if not bot.config['discord']['token']:
+                logger.error(Messages.Log.DISCORD_TOKEN_NOT_FOUND)
+                return
+            await bot.start(bot.config['discord']['token'])
+            break  # Clean exit from bot.start() (e.g. graceful shutdown)
+        except OSError as e:
+            logger.warning(f"Connection error, retrying in {retry_delay}s: {e}")
+            try:
+                await bot.close()
+            except Exception:
+                pass
+            await asyncio.sleep(retry_delay)
+            retry_delay = min(retry_delay * 2, max_retry_delay)
+        finally:
+            if hasattr(bot, 'vrchat_api'):
+                bot.vrchat_api.close()
 
 if __name__ == "__main__":
     while True:
