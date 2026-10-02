@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Callable
 from datetime import datetime
@@ -7,6 +8,7 @@ from typing import Any, TYPE_CHECKING
 
 import pytz
 import vrchatapi
+from urllib3.exceptions import ProtocolError
 from vrchatapi.api.authentication_api import AuthenticationApi
 from vrchatapi.api.groups_api import GroupsApi
 from vrchatapi.exceptions import UnauthorizedException, ApiException
@@ -366,20 +368,36 @@ class VRChatAPI:
             logger.error(Messages.Log.HEARTBEAT_FAIL.format(e))
             return AuthResult(success=False, error=str(e))
 
-    async def _with_auth_retry(self, operation_name: str, fn: Callable[[], ApiResult]) -> ApiResult:
-        """Execute fn with automatic re-auth retry on UnauthorizedException."""
+    async def _with_auth_retry(
+        self, operation_name: str, fn: Callable[[], ApiResult], *, retry_connection: bool = False
+    ) -> ApiResult:
+        """Execute fn with re-auth and optional one-time connection retry."""
         if not self.authenticated or not self.api_client:
             return ApiResult(success=False, error=Messages.Error.NOT_AUTHENTICATED)
 
+        connection_retried = False
+
+        async def run() -> ApiResult:
+            nonlocal connection_retried
+            try:
+                return fn()
+            except (ConnectionError, ProtocolError) as e:
+                if not retry_connection or connection_retried:
+                    raise
+                connection_retried = True
+                logger.warning("Connection error in %s; retrying in 3 seconds: %s", operation_name, e)
+                await asyncio.sleep(3)
+                return fn()
+
         try:
-            return fn()
+            return await run()
         except UnauthorizedException as e:
             logger.warning(f"Auth error in {operation_name}: {e}")
             logger.info(Messages.Log.REAUTH_TRIGGERED.format(operation_name))
             auth_result = await self._authenticate()
             if auth_result.success:
                 try:
-                    return fn()
+                    return await run()
                 except Exception as retry_e:
                     logger.error(f"Error in {operation_name} after reauth: {retry_e}")
                     return ApiResult(success=False, error=str(retry_e))
@@ -413,7 +431,7 @@ class VRChatAPI:
             )
             return ApiResult(success=True, data={"group_post": group_post})
 
-        result = await self._with_auth_retry("Post Announcement", _do_post)
+        result = await self._with_auth_retry("Post Announcement", _do_post, retry_connection=True)
 
         # Queue for retry if auth failed
         if not result.success and result.error == Messages.Error.AUTH_FAIL_RETRY:
@@ -466,7 +484,7 @@ class VRChatAPI:
             )
             return ApiResult(success=True, data={"event": event, "event_id": event.id})
 
-        return await self._with_auth_retry("Create Calendar Event", _do_create)
+        return await self._with_auth_retry("Create Calendar Event", _do_create, retry_connection=True)
 
     async def delete_group_calendar_event(self, group_id: str, calendar_event_id: str) -> ApiResult:
         """Delete a group calendar event"""
