@@ -4,7 +4,7 @@ A Discord bot that schedules and posts VRChat group announcements via an emoji-b
 
 DiscordのメッセージとリアクションだけでVRChatのグループ告知やカレンダーを簡単に管理できるボット
 
-[User Manual | 使用説明書](https://inkuxuan.github.io/kokuchi-kun/)
+[User Manual | 使用説明書](https://kokuchi-kun.inkutech.jp/)
 
 **Announcement flow:**
 1. User mentions the bot in a monitored channel → bot reacts with 👀

@@ -103,5 +103,5 @@ class GeneralCog(commands.Cog):
         embed.add_field(name="/cancel [メッセージID]", value=Messages.Discord.CMD_CANCEL_DESC, inline=False)
         embed.add_field(name="/reload", value=Messages.Discord.CMD_RELOAD_DESC, inline=False)
         embed.add_field(name="/help", value=Messages.Discord.CMD_HELP_DESC, inline=False)
-        embed.set_footer(text=f"Version: {self.version} | マニュアル: https://inkuxuan.github.io/kokuchi-kun/")
+        embed.set_footer(text=f"Version: {self.version} | マニュアル: https://kokuchi-kun.inkutech.jp/")
         await interaction.response.send_message(embed=embed)
