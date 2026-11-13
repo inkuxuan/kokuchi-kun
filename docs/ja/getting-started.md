@@ -24,5 +24,5 @@ READMEに記載されたセットアップ手順に沿って、環境構築・�
 
 自分でデプロイせずにKokuchi Kunを利用したい方向けに、マネージドサービスを準備中です。現在アルファテストとして提供しており、ご興味のある方は以下からお問い合わせください。
 
-- **Discordサーバー：** [discord.gg/Xg9UKnKTnv](https://discord.gg/Xg9UKnKTnv)
+- **公式サイト：** [inkutech.jp](https://inkutech.jp?utm_source=githubpages&utm_medium=referral&utm_campaign=kokuchikun)
 - **メール：** [mail@inkutech.jp](mailto:mail@inkutech.jp)
