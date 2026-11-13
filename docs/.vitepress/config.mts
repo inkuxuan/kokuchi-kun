@@ -1,7 +1,7 @@
 import { defineConfig } from 'vitepress'
 
 export default defineConfig({
-  base: '/kokuchi-kun/',
+  base: '/',
 
   locales: {
     root: {
