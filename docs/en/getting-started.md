@@ -24,5 +24,5 @@ The managed service is currently in **alpha testing**. Features and behavior may
 
 If you prefer not to deploy the bot yourself, a managed service is being prepared. It is currently available as an alpha test. If you are interested, please reach out through either of the following:
 
-- **Website:** [inkutech.jp](https://inkutech.jp)
+- **Website:** [inkutech.jp](https://inkutech.jp?utm_source=githubpages&utm_medium=referral&utm_campaign=kokuchikun)
 - **Email:** [mail@inkutech.jp](mailto:mail@inkutech.jp)
